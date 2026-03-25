@@ -23,8 +23,10 @@ class GitLabClient:
     def validate_connection(self) -> bool:
         """Validate GitLab connection."""
         try:
-            user = self.gl.auth()
-            logger.info(f"Connected to GitLab as user: {user.username}")
+            # Get current user info directly via API
+            user_data = self.gl.http_get("/user")
+            username = user_data.get('username', 'unknown')
+            logger.info(f"Connected to GitLab as user: {username}")
             return True
         except Exception as e:
             logger.error(f"Failed to connect to GitLab: {e}")
@@ -70,14 +72,16 @@ class GitLabClient:
             User data if found, None otherwise
         """
         try:
-            users = self.gl.users.list(username=username)
-            if users:
-                user = users[0]
+            # Use direct API call to ensure we get full user data
+            users_data = self.gl.http_get("/users", query_data={"username": username})
+            if isinstance(users_data, list) and users_data:
+                user = users_data[0]
                 return {
-                    'id': user.id,
-                    'username': user.username,
-                    'email': user.email
+                    'id': user['id'],
+                    'username': user['username'],
+                    'email': user.get('email', '')
                 }
+            return None
         except Exception as e:
             logger.error(f"Failed to get user {username}: {e}")
         return None
