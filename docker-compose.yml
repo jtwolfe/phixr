@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  phixr-bot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      GITLAB_URL: http://host.docker.internal:8080
+      GITLAB_BOT_TOKEN: ${GITLAB_BOT_TOKEN}
+      BOT_USERNAME: phixr-bot
+      BOT_EMAIL: phixr-bot@localhost
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8000
+      WEBHOOK_SECRET: phixr-webhook-secret
+      POSTGRES_URL: postgresql://phixr:phixr@postgres:5432/phixr
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: INFO
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - phixr-network
+    volumes:
+      - ./:/app
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: phixr
+      POSTGRES_PASSWORD: phixr
+      POSTGRES_DB: phixr
+    ports:
+      - "5432:5432"
+    networks:
+      - phixr-network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - phixr-network
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  phixr-network:
+    driver: bridge
