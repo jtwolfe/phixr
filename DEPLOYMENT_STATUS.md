@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/phixr.jpg" alt="Phixr Logo" width="200" />
+</div>
+
 # ✅ Phase 1 Successfully Deployed!
 
 ## Current Status

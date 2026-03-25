@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/phixr.jpg" alt="Phixr Logo" width="200" />
+</div>
+
 # 🚀 Next Steps: Getting Phase 1 Running
 
 ## Quick Start (5-10 minutes)

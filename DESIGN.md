@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/phixr.jpg" alt="Phixr Logo" width="250" />
+</div>
+
 # High-Level Design Document: Phixr
 ## Hybrid Git-Integrated Collaborative AI Coding Platform
 
