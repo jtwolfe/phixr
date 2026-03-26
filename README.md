@@ -33,13 +33,24 @@ The bot layer is fully operational:
 - ✅ Webhook receiver ready
 - ✅ Full test coverage with working examples
 
-**Phase 2: OpenCode Integration** 🔄 (Ready to begin)
-- Containerize modified OpenCode
-- Pass issue context to OpenCode
-- Execute sandbox operations
-- Auto-generate MR/PR with results
+**Phase 2: OpenCode Integration** ⚠️ PARTIALLY IMPLEMENTED
 
-See [DEPLOYMENT_STATUS.md](./DEPLOYMENT_STATUS.md) for current status and [PHASE_1_SUMMARY.md](./PHASE_1_SUMMARY.md) for Phase 1 details.
+Phase 2 implementation includes:
+- ✅ **Working components**: ContextInjector, VibeRoomManager, Models, Configuration
+- ⚠️ **Foundation ready**: Multi-user collaboration framework, session models
+- ❌ **Integration layer broken**: OpenCodeBridge has async/sync issues (see below)
+
+**⚠️ CRITICAL**: The integration layer (OpenCodeBridge) has async/sync mismatches and won't work with a real OpenCode server yet. See [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md) for details.
+
+**Phase 2 Components Status**:
+- ✅ ContextInjector - Production-ready
+- ✅ VibeRoomManager - Production-ready for MVP
+- ✅ Execution Models - Production-ready
+- ✅ SandboxConfig - Production-ready
+- ❌ OpenCodeBridge - NOT WORKING (async/sync mismatch)
+- ⚠️ OpenCodeServerClient - Untested with real server
+
+See [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md) for comprehensive status and [docs/README.md](./docs/README.md) for documentation guide.
 
 ---
 
@@ -83,13 +94,20 @@ For detailed setup, see [GETTING_STARTED.md](./GETTING_STARTED.md).
 
 ## 📚 Documentation
 
+### Phase 1
+- **[PHASE_1_SUMMARY.md](./PHASE_1_SUMMARY.md)** - Phase 1 complete implementation summary
+
+### Phase 2
+- **[PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md)** - **REQUIRED READING** - Honest status assessment
+- **[PHASE_2_DEV_QUICK_REF.md](./PHASE_2_DEV_QUICK_REF.md)** - Developer quick reference guide
+- **[docs/README.md](./docs/README.md)** - Phase 2 documentation hub
+- **[PHASE_2_IMPLEMENTATION.md](./PHASE_2_IMPLEMENTATION.md)** - Architecture overview
+
+### General
 - **[DESIGN.md](./DESIGN.md)** - Complete high-level design document
 - **[GETTING_STARTED.md](./GETTING_STARTED.md)** - Setup instructions
-- **[DEPLOYMENT_STATUS.md](./DEPLOYMENT_STATUS.md)** - Current status and what's working
-- **[PHASE_1_PLAN.md](./PHASE_1_PLAN.md)** - Detailed Phase 1 implementation plan
-- **[PHASE_1_SUMMARY.md](./PHASE_1_SUMMARY.md)** - Phase 1 summary and architecture
+- **[DEPLOYMENT_STATUS.md](./DEPLOYMENT_STATUS.md)** - Current deployment status
 - **[docs/QUICKSTART.md](./docs/QUICKSTART.md)** - Quick reference guide
-- **[docs/GITLAB_MANUAL_SETUP.md](./docs/GITLAB_MANUAL_SETUP.md)** - Manual bot setup
 
 ---
 
@@ -177,12 +195,17 @@ Bot:     👋 I'm ready to assist with this issue!
 
 ### What's Coming (Phase 2+)
 
+⚠️ **NOTE**: These features are defined but the OpenCode integration layer needs fixes before they work.
+
+**Intended Features** (when integration is fixed):
 - `/ai-plan` - Generate implementation plan
 - `/ai-implement` - AI implements the solution
 - `/ai-review-mr` - AI reviews your merge request
 - `/ai-fix-tests` - AI fixes failing tests
 - Vibe room - Browser-based collaborative environment
 - Web terminal - Access OpenCode via browser
+
+**See**: [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md) for status and fix requirements
 
 ---
 
@@ -217,10 +240,12 @@ Ready for Kubernetes deployment - Helm charts coming in future phases.
 
 The project is structured for incremental development. Each phase has clear deliverables:
 
-- **Phase 1** ✅ - Bot infrastructure & commands
-- **Phase 2** 🔄 - OpenCode integration & sandbox
-- **Phase 3** - Multi-user vibe room
+- **Phase 1** ✅ - Bot infrastructure & commands (COMPLETE)
+- **Phase 2** ⚠️ - OpenCode integration & sandbox (PARTIALLY IMPLEMENTED - has issues)
+- **Phase 3** - Multi-user vibe room & real-time collaboration
 - **Phase 4** - Analytics & team dashboard
+
+**⚠️ Phase 2 Status**: The OpenCode integration layer has critical issues. See [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md).
 
 Want to contribute? See [PHASE_1_PLAN.md](./PHASE_1_PLAN.md) for implementation details.
 
