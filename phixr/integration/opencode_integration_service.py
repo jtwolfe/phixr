@@ -40,15 +40,23 @@ class OpenCodeIntegrationService:
     Replaces the problematic OpenCodeBridge with proper architecture.
     """
 
-    def __init__(self, config: SandboxConfig, mode: IntegrationMode = IntegrationMode.UI_EMBED):
+    def __init__(self, config: SandboxConfig, mode: IntegrationMode = IntegrationMode.UI_EMBED,
+                 gitlab_token: Optional[str] = None, access_manager: Optional[Any] = None,
+                 base_url: str = "http://localhost:8000"):
         """Initialize integration service.
 
         Args:
             config: Sandbox configuration
             mode: Integration mode (UI_EMBED for single user vibe coding)
+            gitlab_token: GitLab bot token for repository cloning
+            access_manager: Access management service
+            base_url: Base URL for vibe room links
         """
         self.config = config
         self.mode = mode
+        self.gitlab_token = gitlab_token
+        self.access_manager = access_manager
+        self.base_url = base_url
         self.client = OpenCodeServerClient(self.config.opencode_server_url)
         self.context_injector = ContextInjector(config)
         self.vibe_manager = VibeRoomManager()
@@ -268,6 +276,209 @@ class OpenCodeIntegrationService:
 
         # For UI embedding mode, return the vibe room URL
         return f"{base_url}/vibe/{session.vibe_room_id}"
+
+    async def monitor_plan_completion(self, session_id: str, gitlab_client, project_id: int, issue_id: int) -> None:
+        """Monitor a planning session and send results back to GitLab.
+        
+        Polls OpenCode for messages and detects plan completion.
+        """
+        session = self.sessions.get(session_id)
+        if not session:
+            logger.error(f"Session not found for monitoring: {session_id}")
+            return
+
+        try:
+            logger.info(f"Starting plan monitoring for session {session_id}")
+            
+            max_attempts = 45  # 7.5 minutes with 10s intervals
+            attempts = 0
+            plan_detected = False
+            
+            while attempts < max_attempts and not plan_detected:
+                try:
+                    messages = await self.client.get_messages(session.container_id)
+                    message_count = len(messages)
+                    
+                    logger.debug(f"Session {session_id}: {message_count} messages on attempt {attempts + 1}/{max_attempts}")
+                    
+                    if message_count > 1:  # Initial message + AI response
+                        last_message = messages[-1]
+                        content = self._extract_text_from_message(last_message)
+                        
+                        # Check for plan completion
+                        if self._detect_plan_completion(content, message_count):
+                            logger.info(f"Plan completion detected for session {session_id}")
+                            plan_detected = True
+                            
+                            # Extract plan from messages
+                            plan_content = self._extract_plan_from_messages(messages)
+                            
+                            # Post to GitLab
+                            await self._post_plan_to_gitlab(
+                                gitlab_client, project_id, issue_id,
+                                session, plan_content, messages
+                            )
+                            
+                            session.status = SessionStatus.COMPLETED
+                            session.ended_at = datetime.utcnow()
+                            logger.info(f"Planning session completed: {session_id}")
+                            return
+                
+                except Exception as e:
+                    logger.warning(f"Error checking session {session_id} on attempt {attempts + 1}: {e}")
+                    # Continue monitoring despite individual errors
+                
+                await asyncio.sleep(10)  # Check every 10 seconds
+                attempts += 1
+            
+            # Handle timeout
+            if not plan_detected:
+                logger.warning(f"Planning session timed out after {max_attempts} attempts: {session_id}")
+                await self._post_timeout_to_gitlab(gitlab_client, project_id, issue_id, session)
+        
+        except Exception as e:
+            logger.error(f"Critical error monitoring planning session {session_id}: {e}", exc_info=True)
+            await self._post_error_to_gitlab(gitlab_client, project_id, issue_id, session, str(e))
+
+    def _extract_text_from_message(self, message: Dict[str, Any]) -> str:
+        """Extract text content from an OpenCode message object.
+        
+        OpenCode messages have nested structure:
+        {
+            "info": {...},
+            "parts": [
+                {"type": "text", "text": "content"},
+                ...
+            ]
+        }
+        """
+        # Try direct content/text fields first
+        if 'content' in message and message['content']:
+            return message['content']
+        if 'text' in message and message['text']:
+            return message['text']
+        
+        # Try nested parts structure
+        if 'parts' in message and isinstance(message['parts'], list):
+            text_parts = []
+            for part in message['parts']:
+                if isinstance(part, dict):
+                    if 'text' in part and part['text']:
+                        text_parts.append(part['text'])
+                    elif 'content' in part and part['content']:
+                        text_parts.append(part['content'])
+            if text_parts:
+                return '\n'.join(text_parts)
+        
+        return ''
+
+    def _detect_plan_completion(self, content: str, message_count: int) -> bool:
+        """Detect if content appears to be a completed plan."""
+        if not content:
+            return False
+        
+        content_lower = content.lower()
+        
+        # Check for plan indicators
+        plan_indicators = [
+            "implementation plan",
+            "## plan",
+            "## implementation plan",
+            "## analysis",
+            "## approach",
+            "## files to",
+            "## implementation steps",
+            "## testing plan",
+            "step 1:",
+            "step-by-step plan",
+        ]
+        
+        for indicator in plan_indicators:
+            if indicator in content_lower:
+                return True
+        
+        return False
+
+    def _extract_plan_from_messages(self, messages: List[Dict]) -> str:
+        """Extract planning content from messages."""
+        plan_parts = []
+        
+        for message in messages[1:]:  # Skip initial context message
+            content = self._extract_text_from_message(message)
+            if content and len(content) > 50:  # Substantial content
+                plan_parts.append(content)
+        
+        return '\n\n'.join(plan_parts)
+
+    async def _post_plan_to_gitlab(self, gitlab_client, project_id: int, issue_id: int,
+                                   session: Session, plan_content: str, messages: list = None) -> None:
+        """Post completed plan to GitLab issue."""
+        try:
+            response = f"""## 📋 Implementation Plan Completed ✅
+
+**Session ID:** `{session.id}`
+**Issue:** #{issue_id}
+**Branch:** `{getattr(session, 'branch', 'main')}`
+**Generated at:** {datetime.utcnow().isoformat()}
+
+### AI-Generated Implementation Plan
+
+{plan_content}
+
+---
+
+### Next Steps
+
+Reply to this comment with:
+`@phixr-bot /ai-implement`
+
+---
+
+**Generated by Phixr + OpenCode Integration**
+"""
+            
+            await gitlab_client.issues.update(issue_id, description=response)
+            logger.info(f"Posted plan to GitLab issue #{issue_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to post plan to GitLab: {e}")
+
+    async def _post_timeout_to_gitlab(self, gitlab_client, project_id: int, issue_id: int, session: Session) -> None:
+        """Post timeout message to GitLab issue."""
+        try:
+            message = f"""⏰ **Planning Session Timeout**
+
+Session `{session.id}` did not complete within the timeout period.
+
+Please try again with `/ai-plan` or provide additional context for refinement.
+"""
+            
+            await gitlab_client.issues.update(issue_id, description=message)
+            logger.warning(f"Posted timeout message to GitLab issue #{issue_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to post timeout to GitLab: {e}")
+
+    async def _post_error_to_gitlab(self, gitlab_client, project_id: int, issue_id: int, session: Session, error: str) -> None:
+        """Post error message to GitLab issue."""
+        try:
+            message = f"""❌ **Planning Session Error**
+
+Session `{session.id}` encountered an error:
+
+```
+{error}
+```
+
+Please try again with `/ai-plan` or contact support.
+"""
+            
+            await gitlab_client.issues.update(issue_id, description=message)
+            logger.error(f"Posted error message to GitLab issue #{issue_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to post error to GitLab: {e}")
+
 
     async def cleanup_old_sessions(self, older_than_hours: int = 24) -> int:
         """Clean up old sessions."""
