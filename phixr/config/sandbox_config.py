@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 
 class SandboxConfig(BaseSettings):
@@ -162,13 +162,13 @@ class SandboxConfig(BaseSettings):
         description="PostgreSQL connection for session history"
     )
     
-    class Config:
-        env_prefix = "PHIXR_SANDBOX_"
-        case_sensitive = False
-        
-        # Allow loading from .env file
-        env_file = ".env.local"
-        env_file_encoding = "utf-8"
+    model_config = ConfigDict(
+        env_prefix="PHIXR_SANDBOX_",
+        case_sensitive=False,
+        env_file=".env.local",
+        env_file_encoding="utf-8",
+        extra="ignore"  # Ignore extra fields from .env.local
+    )
     
     def validate_limits(self) -> None:
         """Validate resource limit configuration."""

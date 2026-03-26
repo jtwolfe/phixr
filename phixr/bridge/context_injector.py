@@ -21,6 +21,7 @@ class ContextInjector:
         """Initialize context injector."""
         self.config = config
         self.temp_dirs: Dict[str, Path] = {}
+        self._temp_dir_objects: Dict[str, tempfile.TemporaryDirectory] = {}
     
     def prepare_context_volume(self, context: IssueContext, 
                               execution_config: ExecutionConfig) -> Tuple[str, str]:
@@ -88,6 +89,7 @@ class ContextInjector:
         # Store reference for cleanup later
         volume_name = f"phixr-context-{session_id}"
         self.temp_dirs[volume_name] = volume_path
+        self._temp_dir_objects[volume_name] = temp_dir
         
         logger.info(f"Context volume prepared: {volume_name}")
         return str(volume_path), volume_name
@@ -109,13 +111,13 @@ class ContextInjector:
 
 ## Issue
 **ID:** {context.issue_id}
-**Title:** {context.issue_title}
+**Title:** {context.title}
 
 ### Description
-{context.issue_description}
+{context.description}
 
 ### Labels
-{', '.join(context.issue_labels) if context.issue_labels else '(none)'}
+{', '.join(context.labels) if context.labels else '(none)'}
 
 ## Your Task
 You are in **{mode_str}** mode.
@@ -167,7 +169,7 @@ Generated at {datetime.utcnow().isoformat()}Z by Phixr
             
             # Execution configuration
             "PHIXR_TIMEOUT": str(execution_config.timeout_minutes * 60),
-            "OPENCODE_MODE": execution_config.mode.value,
+            "OPENCODE_MODE": execution_config.mode if isinstance(execution_config.mode, str) else execution_config.mode.value,
             "OPENCODE_MODEL": execution_config.model,
             "OPENCODE_TEMPERATURE": str(execution_config.temperature),
             
@@ -196,11 +198,13 @@ Generated at {datetime.utcnow().isoformat()}Z by Phixr
             return False
         
         try:
-            volume_path = self.temp_dirs[volume_name]
-            if volume_path.exists():
-                import shutil
-                shutil.rmtree(volume_path, ignore_errors=True)
+            # Remove the temp directory object (which cleans up the directory)
+            if volume_name in self._temp_dir_objects:
+                temp_dir_obj = self._temp_dir_objects[volume_name]
+                temp_dir_obj.cleanup()
+                del self._temp_dir_objects[volume_name]
                 logger.info(f"Cleaned up context volume: {volume_name}")
+            
             del self.temp_dirs[volume_name]
             return True
         except Exception as e:
@@ -227,13 +231,18 @@ if __name__ == "__main__":
     
     sample_context = IssueContext(
         issue_id=123,
-        issue_title="Test Issue",
-        issue_description="Test description",
+        project_id=456,
+        title="Test Issue",
+        description="Test description",
+        url="https://gitlab.com/test/repo/-/issues/123",
+        author="test-user",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
         repo_url="https://github.com/test/repo.git",
         repo_name="repo",
         language="python",
         structure={"src/": "Source code"},
-        issue_labels=["feature"],
+        labels=["feature"],
     )
     
     exec_config = ExecutionConfig(
