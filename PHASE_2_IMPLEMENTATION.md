@@ -1,248 +1,186 @@
 # Phase 2 Implementation Summary
 
-## Overview
+**⚠️ IMPORTANT: See `PHASE_2_STATUS_HONEST.md` for comprehensive status report**
 
-Successfully implemented Phase 2 of Phixr with production-grade API-based OpenCode integration. Moved from ephemeral Docker containers to persistent HTTP API sessions with proper session isolation for concurrent requests.
+## Quick Status
 
-## Key Achievements
+- **✅ Working**: ContextInjector, VibeRoomManager, Models, Configuration
+- **❌ NOT Working**: OpenCodeBridge integration with real OpenCode server
+- **⚠️ Testing**: All tests pass with mocks, but don't validate real behavior
 
-### 1. OpenCodeBridge Refactor (Complete)
-✅ **File**: `phixr/bridge/opencode_bridge.py`
-- Replaced `ContainerManager` dependency with `OpenCodeServerClient` HTTP API
-- Removed Docker volume mounting - context now passed via initial message
-- Implemented full session lifecycle management:
-  - `start_opencode_session()` - Creates OpenCode session with context injection
-  - `monitor_session()` - Check session status via API
-  - `extract_results()` - Retrieve diffs and changes
-  - `stop_opencode_session()` - Graceful session cleanup
-- Built internal context message builder that formats all issue context
-- Session isolation guaranteed by OpenCode's native session model
+## What This Document Describes
 
-### 2. ContextInjector Simplification (Complete)
-✅ **File**: `phixr/bridge/context_injector.py`
-- Removed temporary file volume creation (Phase 1 pattern)
-- Added `build_context_message()` for API-based context injection
-- Added `build_system_prompt()` with mode-specific instructions
-- Maintained environment variable generation for metadata
-- `cleanup_all()` is now a no-op (no volumes to clean)
+This document describes the **intended architecture** of Phase 2. For actual status and known issues, see `PHASE_2_STATUS_HONEST.md`.
 
-### 3. Configuration Updates (Complete)
-✅ **File**: `phixr/config/sandbox_config.py`
-- Added `opencode_server_url` field (defaults to `http://localhost:4096`)
-- Configurable via environment variable `PHIXR_SANDBOX_OPENCODE_SERVER_URL`
-- Maintains backward compatibility with other Docker settings
+## Architecture Overview
 
-### 4. OpenCodeServerClient HTTP Library (Already Completed)
-✅ **File**: `phixr/bridge/opencode_client.py`
-- Async httpx-based HTTP client for OpenCode API
-- Full REST API coverage:
-  - Session management (create, get, list, delete)
-  - Message sending with model/agent support
-  - Diff extraction for code changes
-  - Message history retrieval
-  - Health checking
-- Comprehensive error handling with `OpenCodeServerError`
+Phase 2 moves from ephemeral Docker containers to persistent OpenCode HTTP API sessions. The design includes:
 
-### 5. CommentHandler Integration (Complete)
-✅ **File**: `phixr/handlers/comment_handler.py` & `phixr/main.py`
-- Updated to use refactored `OpenCodeBridge`
-- Proper bridge injection during app initialization
-- Phase 2 commands (`/ai-plan`, `/ai-implement`, `/ai-review-mr`, `/ai-fix-tests`) ready
-- Error handling for missing OpenCode server graceful degradation
+1. **OpenCodeBridge** - Main integration layer between Phixr and OpenCode
+2. **OpenCodeServerClient** - HTTP client for OpenCode server API
+3. **ContextInjector** - Prepares issue context for injection into sessions
+4. **VibeRoomManager** - Multi-user collaborative session framework
+5. **Docker Compose** - Runs OpenCode server as persistent service
 
-### 6. Docker Compose Configuration (Already Completed)
-✅ **File**: `docker-compose.yml`
-- Added `opencode-server` service with profile `phase-2`
-- Installs OpenCode from npm
-- Runs `opencode serve --hostname 0.0.0.0 --port 4096`
-- Health checks on `/global/health` endpoint
-- Environment variable support for `OPENCODE_ZEN_API_KEY`
+## Key Components
 
-### 7. Comprehensive Test Suite (Complete)
-✅ **File**: `tests/integration/test_phase2_api_integration.py`
-- 14 tests covering:
-  - Bridge initialization and session creation
-  - Context message injection
-  - Session monitoring and results extraction
-  - Error handling and validation
-- 100% pass rate
+### ✅ ContextInjector (Working)
+- `build_context_message()` - Formats issue context into markdown
+- `build_system_prompt()` - Mode-specific instructions (PLAN/BUILD/REVIEW)
+- `create_environment_variables()` - Metadata generation
+- **Status**: Fully functional, tested, production-ready
 
-✅ **File**: `tests/unit/test_vibe_room_manager.py`
-- 15 tests covering multi-user foundation:
-  - Room creation and management
-  - Participant tracking
-  - Message attribution
-  - Sharing tokens
-  - Statistics
-- 100% pass rate
+### ❌ OpenCodeBridge (NOT Working with Real Server)
+- `start_opencode_session()` - Creates OpenCode session via HTTP API
+- `monitor_session()` - Checks session status
+- `extract_results()` - Retrieves diffs and changes
+- `stop_opencode_session()` - Cleanup sessions
+- **Status**: ⚠️ CRITICAL ISSUES
+  - Async/sync mismatch with OpenCodeServerClient
+  - API signature mismatch (wrong parameters)
+  - No real integration testing
 
-### 8. Multi-User Foundation (Complete)
-✅ **File**: `phixr/models/execution_models.py`
-- Added `SessionParticipant` model for multi-user support
-- Added `SessionMessage` model with user attribution
-- Added `VibeRoom` model for collaborative sessions
-- Extended `Session` with `vibe_room_id` and `single_user` flags
-- Ready for Phase 3 real-time collaboration
+### ✅ VibeRoomManager (Working)
+- Session lifecycle management
+- Participant tracking with roles
+- Message storage with attribution
+- Sharing tokens
+- **Status**: Functional for MVP (in-memory), needs database in Phase 3
 
-✅ **File**: `phixr/collaboration/vibe_room_manager.py`
-- Full vibe room lifecycle management
-- Participant management (roles: owner, editor, viewer)
-- Message storage with user attribution
-- Sharing token generation
-- Room archiving and deletion
-- Statistics and filtering
-
-## Architecture Benefits
-
-### Session Isolation
-- OpenCode's native session isolation guarantees
-- No context bleeding between concurrent requests
-- Each request creates a separate OpenCode session
-
-### Scalability
-- Persistent OpenCode server (single instance or replicated)
-- Horizontal scaling via load balancer
-- Reduced memory per request (no container overhead)
-
-### Maintenance
-- No Docker volume cleanup needed
-- Simpler deployment model
-- Easier debugging via HTTP API
-
-### Future-Ready
-- Foundation for multi-user collaboration (Phase 3)
-- Message attribution system
-- Permission-based access control model
-- Sharing token infrastructure
+### ⚠️ OpenCodeServerClient (Partially Implemented)
+- Async httpx-based HTTP client
+- Session management (create, get, list, delete)
+- Message sending and retrieval
+- **Status**: Not validated against real server
 
 ## Configuration
 
 ### Environment Variables
 ```bash
-# OpenCode Server (Phase 2)
 PHIXR_SANDBOX_OPENCODE_SERVER_URL=http://localhost:4096
-
-# OpenCode Zen API Key (optional)
 OPENCODE_ZEN_API_KEY=your-key-here
-
-# Standard Phixr Config
-GITLAB_URL=https://gitlab.example.com
-GITLAB_BOT_TOKEN=your-bot-token
 ```
 
 ### Docker Compose
 ```bash
-# Start with Phase 2 profile
 docker-compose up --profile phase-2
-
-# Or standalone OpenCode server
-docker-compose up opencode-server
 ```
 
-## Migration Path from Phase 1
+## Testing Status
 
-### What Changed
-- Container management → OpenCode HTTP API
-- Volume mounting → Initial message injection
-- Session cleanup → Simple deletion via API
-
-### What Stayed The Same
-- Issue context extraction
-- GitLab webhook handling
-- Command parsing
-- Result posting to issues
-
-## Testing
-
-### Unit Tests
+### Tests Passing ✅
 ```bash
-pytest tests/unit/test_vibe_room_manager.py -v
-# Result: 15 passed
+pytest tests/unit/test_vibe_room_manager.py -v  # 15 passed
+pytest tests/integration/test_phase2_api_integration.py -v  # 14 passed
 ```
 
-### Integration Tests
-```bash
-pytest tests/integration/test_phase2_api_integration.py -v
-# Result: 14 passed
-```
+### Important Caveat ⚠️
+**All tests use mocked OpenCodeServerClient** - they validate logic but NOT real API behavior.
 
-### Import Verification
-```bash
-python -c "from phixr.main import app; print('✅ Ready')"
-# Result: ✅ Ready
-```
+## Known Critical Issues
 
-## Known Limitations (Phase 2)
+See `PHASE_2_STATUS_HONEST.md` for full details, but the main issues are:
 
-1. WebSocket terminal streaming uses OpenCode message API instead of container exec
-2. No interactive terminal input (will be added in Phase 3)
-3. Single-user sessions only (multi-user vibe rooms in Phase 3)
-4. In-memory vibe room storage (will use Redis/PostgreSQL in Phase 3)
+1. **Async/Sync Mismatch**: OpenCodeBridge is synchronous but calls async client methods
+2. **API Signature Mismatch**: `create_session()` parameters don't match between bridge and client
+3. **No Real Testing**: No tests actually connect to OpenCode server
+4. **Integration Untested**: End-to-end `/ai-plan` flow not validated
 
-## Next Steps for Phase 3
+## What's Implemented vs What's Tested
 
-1. **Real-Time Collaboration**
-   - WebSocket support for shared sessions
-   - Real-time message synchronization
-   - Cursor/activity tracking
+| Component | Implemented | Tested (Real) | Tested (Mock) | Working with Real Server |
+|-----------|:-----------:|:-------------:|:--------------:|:------------------------:|
+| ContextInjector | ✅ | ✅ | ✅ | ✅ |
+| VibeRoomManager | ✅ | ✅ | ✅ | ✅ |
+| Execution Models | ✅ | ✅ | ✅ | ✅ |
+| SandboxConfig | ✅ | ✅ | ✅ | ✅ |
+| OpenCodeBridge | ✅ | ❌ | ✅ | ❌ |
+| OpenCodeClient | ⚠️ | ❌ | ✅ | ⚠️ |
+| Docker Compose | ✅ | ⚠️ | N/A | ⚠️ |
 
-2. **Persistence**
-   - Move vibe rooms to Redis/PostgreSQL
-   - Session history archival
-   - Analytics and audit logging
+**Legend**: 
+- ✅ Fully working
+- ⚠️ Partially working / untested
+- ❌ Not working / not tested
 
-3. **Permission System**
-   - Fine-grained access control
-   - Admin panel for room management
-   - Sharing token expiration
+## Strengths of Current Implementation
 
-4. **Terminal Streaming**
-   - Interactive terminal access
-   - Session recording
-   - Replay functionality
+1. **Excellent Foundation**: Clean architecture, good abstractions
+2. **Comprehensive Models**: VibeRoom, Session, Participants well-designed
+3. **Strong Testing**: 29 tests, 100% mock pass rate
+4. **Good Documentation**: Clear intent and structure
+5. **Multi-User Ready**: Attribution and roles framework in place
 
-## Files Modified/Created
+## Weaknesses & Risks
 
-### Modified
-- `phixr/bridge/opencode_bridge.py` - Complete refactor to API-based
-- `phixr/bridge/context_injector.py` - Simplified for API injection
-- `phixr/config/sandbox_config.py` - Added server URL config
-- `phixr/main.py` - Updated initialization
-- `phixr/models/execution_models.py` - Extended with multi-user models
-- `phixr/handlers/comment_handler.py` - Uses refactored bridge
+1. **Untested Integration**: Bridge doesn't actually work with real server
+2. **Async Issues**: Will crash at runtime with real OpenCode
+3. **No Error Handling**: Limited robustness testing
+4. **No Monitoring**: No metrics or observability
+5. **In-Memory Storage**: VibeRooms lost on restart (Phase 3 issue)
 
-### Created
-- `phixr/collaboration/vibe_room_manager.py` - Multi-user collaboration
-- `phixr/collaboration/__init__.py` - Module exports
-- `tests/integration/test_phase2_api_integration.py` - API tests
-- `tests/unit/test_vibe_room_manager.py` - Multi-user tests
+## Recommended Next Steps
 
-### Unchanged
-- Docker Compose already had opencode-server
-- OpenCodeServerClient already implemented
-- Webhook routes unchanged
-- Command handlers compatible
+### Immediate (Fix Critical Issues)
+1. **Make OpenCodeBridge async** or add sync wrapper to client
+2. **Validate API signatures** against actual OpenCode server
+3. **Add integration tests** that connect to real OpenCode
+4. **Test end-to-end** `/ai-plan` command flow
 
-## Verification Checklist
+### Short-term (Harden)
+1. Add connection pooling
+2. Implement retry logic
+3. Add comprehensive error handling
+4. Add metrics and monitoring
 
-✅ OpenCode HTTP API client works
-✅ Bridge creates sessions via API
-✅ Context injection via messages
-✅ Results extraction via API
-✅ Session isolation verified
-✅ Multi-user models ready
-✅ All tests pass
-✅ No import errors
-✅ App initializes successfully
-✅ Backward compatible configuration
+### Medium-term (Phase 3)
+1. Persist vibe rooms to database
+2. Real-time WebSocket collaboration
+3. Terminal streaming
+4. Multi-user session sharing
 
-## Performance Characteristics
+## Deployment Readiness
 
-- **Session Creation**: ~100ms (vs ~2s for container)
-- **Message Injection**: ~50ms (vs ~500ms for volume mount)
-- **Result Extraction**: ~100ms (vs ~200ms from container logs)
-- **Concurrent Capacity**: Limited by OpenCode (typically 10-100 sessions)
+### ❌ NOT Production Ready
+- Integration layer broken (async/sync mismatch)
+- No real server testing
+- Limited error handling
 
-## Conclusion
+### ✅ Development Ready
+- Mock tests pass
+- Can develop against mocks
+- Good for architectural exploration
 
-Phase 2 successfully implements production-grade API-based OpenCode integration with proper session isolation, multi-user foundation, and comprehensive testing. The architecture is scalable, maintainable, and ready for Phase 3 real-time collaboration features.
+## Files
+
+### Core Implementation
+- `phixr/bridge/opencode_bridge.py` - Main integration (⚠️ has bugs)
+- `phixr/bridge/opencode_client.py` - HTTP client (⚠️ not validated)
+- `phixr/bridge/context_injector.py` - Context prep (✅ working)
+- `phixr/collaboration/vibe_room_manager.py` - Multi-user (✅ working)
+- `phixr/models/execution_models.py` - Data models (✅ working)
+
+### Configuration
+- `phixr/config/sandbox_config.py` - Config (✅ working)
+- `docker-compose.yml` - Services (⚠️ not tested with real OpenCode)
+
+### Tests
+- `tests/integration/test_phase2_api_integration.py` - 14 tests (⚠️ mocked only)
+- `tests/unit/test_vibe_room_manager.py` - 15 tests (✅ real)
+
+### Documentation
+- `PHASE_2_STATUS_HONEST.md` - **Read this for true status**
+- `PHASE_2_IMPLEMENTATION.md` - This file (intended vs actual)
+
+## Summary
+
+Phase 2 provides a **solid architectural foundation** with:
+- ✅ Working core components (ContextInjector, VibeRoomManager)
+- ✅ Well-designed models and abstractions
+- ❌ Broken integration layer (needs async/sync fix)
+- ⚠️ No real server testing
+- ⚠️ Not production ready
+
+The good news: **fixing the integration layer is straightforward** (1-2 days) and the foundation is excellent. With those fixes, this would be production-ready.
+
+**For detailed status and issues, see `PHASE_2_STATUS_HONEST.md`.**

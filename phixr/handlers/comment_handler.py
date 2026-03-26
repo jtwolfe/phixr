@@ -7,7 +7,7 @@ from phixr.commands import CommandParser
 from phixr.context import ContextExtractor
 
 if TYPE_CHECKING:
-    from phixr.bridge.opencode_bridge import OpenCodeBridge
+    from phixr.integration.opencode_integration_service import OpenCodeIntegrationService
 
 logger = logging.getLogger(__name__)
 
@@ -68,26 +68,26 @@ class CommentHandler:
     """Handles issue comment events from webhooks."""
     
     def __init__(self, gitlab_client: GitLabClient, bot_user_id: int,
-                 assignment_handler: AssignmentHandler,
-                 opencode_bridge: Optional['OpenCodeBridge'] = None):
+                  assignment_handler: AssignmentHandler,
+                  opencode_integration: Optional['OpenCodeIntegrationService'] = None):
         """Initialize comment handler.
-        
+
         Args:
             gitlab_client: GitLab API client
             bot_user_id: ID of the bot user
             assignment_handler: Assignment tracking handler
-            opencode_bridge: Optional OpenCode bridge for Phase 2 features
+            opencode_integration: Optional OpenCode integration service for Phase 2 features
         """
         self.gitlab_client = gitlab_client
         self.bot_user_id = bot_user_id
         self.assignment_handler = assignment_handler
         self.context_extractor = ContextExtractor(gitlab_client)
         self.command_parser = CommandParser()
-        self.opencode_bridge = opencode_bridge
+        self.opencode_integration = opencode_integration
     
-    def set_opencode_bridge(self, bridge: 'OpenCodeBridge'):
-        """Set the OpenCode bridge for Phase 2 features."""
-        self.opencode_bridge = bridge
+    def set_opencode_integration(self, integration: 'OpenCodeIntegrationService'):
+        """Set the OpenCode integration service for Phase 2 features."""
+        self.opencode_integration = integration
     
     def handle_issue_comment(self, webhook_data: dict) -> bool:
         """Handle an issue comment webhook event.
@@ -268,13 +268,13 @@ Use `/ai-help` to see available commands.
     
     def _handle_plan_command(self, project_id: int, issue_id: int, comment_author: str):
         """Handle /ai-plan command - generates implementation plan using OpenCode.
-        
+
         Args:
             project_id: GitLab project ID
             issue_id: GitLab issue ID
             comment_author: Author of the comment (for context)
         """
-        if not self.opencode_bridge:
+        if not self.opencode_integration:
             response = "❌ **OpenCode not available.** Phase 2 sandbox is not configured."
             self.gitlab_client.add_issue_comment(project_id, issue_id, response)
             return
@@ -308,16 +308,20 @@ This may take a moment. I'll post the plan here when ready.
             
             # Start OpenCode session for planning
             from phixr.models.execution_models import ExecutionMode
-            session = self.opencode_bridge.start_opencode_session(
+            session = self.opencode_integration.create_session_sync(
                 context=context,
-                mode=ExecutionMode.PLAN,
-                initial_prompt=plan_prompt,
+                execution_mode=ExecutionMode.PLAN,
                 timeout_minutes=15,  # Shorter timeout for planning
+                owner_id=comment_author
             )
             
             logger.info(f"Plan session started: {session.id} for issue {project_id}/{issue_id}")
             
             # Post session info for user
+            # Generate vibe session URL
+            vibe_room = self.opencode_integration.get_vibe_room_by_session(session.id)
+            vibe_url = f"http://localhost:8000/vibe/{vibe_room.id}" if vibe_room else None
+
             response = f"""
 📋 **Implementation Plan Session Started**
 
@@ -325,6 +329,8 @@ This may take a moment. I'll post the plan here when ready.
 **Issue:** [{context.title}]({context.url})
 
 The AI is analyzing the codebase and will generate a detailed implementation plan.
+
+{f"**Vibe Coding Session:** [Open in Browser]({vibe_url})" if vibe_url else ""}
 
 To execute this plan, respond to this comment with:
 `@phixr-bot /ai-implement`

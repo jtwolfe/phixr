@@ -3,8 +3,10 @@ import logging
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from phixr.config import settings
 from phixr.utils import setup_logger, GitLabClient
@@ -13,7 +15,7 @@ from phixr.webhooks import setup_webhook_routes
 
 # Phase 2 imports
 from phixr.config.sandbox_config import SandboxConfig
-from phixr.bridge.opencode_bridge import OpenCodeBridge
+from phixr.integration.opencode_integration_service import OpenCodeIntegrationService, IntegrationMode
 from phixr.terminal.websocket_handler import WebTerminalHandler
 from phixr.models.execution_models import (
     Session, ExecutionResult, ExecutionMode, SessionStatus
@@ -30,6 +32,10 @@ app = FastAPI(
     version="0.1.0"
 )
 
+# Setup templates and static files
+templates = Jinja2Templates(directory="phixr/web/templates")
+app.mount("/static", StaticFiles(directory="phixr/web/static"), name="static")
+
 # Global state (will move to proper DI container in later phases)
 _gitlab_client = None
 _assignment_handler = None
@@ -37,7 +43,7 @@ _comment_handler = None
 
 # Phase 2 - Sandbox and OpenCode components
 sandbox_config: Optional[SandboxConfig] = None
-opencode_bridge: Optional[OpenCodeBridge] = None
+opencode_integration: Optional[OpenCodeIntegrationService] = None
 terminal_manager: Optional[WebTerminalHandler] = None
 
 
@@ -81,54 +87,58 @@ def initialize_app():
     # Phase 2: Initialize sandbox components
     _initialize_sandbox()
     
-    # Inject opencode_bridge into comment handler if available
-    if opencode_bridge and _comment_handler:
-        _comment_handler.set_opencode_bridge(opencode_bridge)
-        logger.info("  OpenCode bridge injected into CommentHandler")
+    # Inject opencode_integration into comment handler if available
+    if opencode_integration and _comment_handler:
+        _comment_handler.set_opencode_integration(opencode_integration)
+        logger.info("  OpenCode integration service injected into CommentHandler")
     
     logger.info("✅ Phixr initialized successfully")
 
 
 def _initialize_sandbox():
     """Initialize Phase 2 sandbox and OpenCode components."""
-    global sandbox_config, opencode_bridge, terminal_manager
-    
+    global sandbox_config, opencode_integration, terminal_manager
+
     try:
         logger.info("Initializing Phase 2 sandbox components...")
         sandbox_config = SandboxConfig()
         logger.info(f"  Sandbox config loaded (server: {sandbox_config.opencode_server_url})")
-        
-        opencode_bridge = OpenCodeBridge(sandbox_config)
-        logger.info("  OpenCode bridge initialized")
-        
-        # Note: Terminal manager currently expects container_manager (legacy).
-        # Will be updated to use opencode_bridge directly in Phase 2b
-        # For now, we skip terminal_manager initialization as websocket streaming
-        # will be handled via OpenCode API messages
-        terminal_manager = None  # WebTerminalHandler(opencode_bridge)
-        logger.info("  Terminal messaging via OpenCode API")
-        
-        logger.info("✅ Phase 2 sandbox initialized (API-based)")
+
+        # Initialize new OpenCode integration service
+        opencode_integration = OpenCodeIntegrationService(
+            sandbox_config,
+            mode=IntegrationMode.UI_EMBED  # For single user vibe coding
+        )
+        logger.info("  OpenCode integration service initialized (UI_EMBED mode)")
+
+        # TODO: Re-enable terminal manager with new integration service
+        # terminal_manager = WebTerminalHandler(opencode_integration)
+        terminal_manager = None  # Temporarily disabled until terminal handler is updated
+        logger.info("  Terminal manager temporarily disabled (will be re-enabled)")
+
+        logger.info("✅ Phase 2 sandbox initialized (new architecture)")
     except Exception as e:
         logger.warning(f"Phase 2 sandbox initialization failed: {e}")
         logger.warning("Sandbox features will be unavailable")
         sandbox_config = None
-        opencode_bridge = None
+        opencode_integration = None
         terminal_manager = None
 
 
 def _cleanup_sandbox():
     """Cleanup Phase 2 sandbox components."""
-    global sandbox_config, opencode_bridge, terminal_manager
-    
-    if opencode_bridge:
+    global sandbox_config, opencode_integration, terminal_manager
+
+    if opencode_integration:
         try:
-            logger.info("Closing OpenCode bridge...")
-            opencode_bridge.close()
+            logger.info("Closing OpenCode integration service...")
+            # Run async cleanup in event loop
+            import asyncio
+            asyncio.run(opencode_integration.close())
         except Exception as e:
-            logger.warning(f"Error closing OpenCode bridge: {e}")
-        opencode_bridge = None
-    
+            logger.warning(f"Error closing OpenCode integration: {e}")
+        opencode_integration = None
+
     terminal_manager = None
     sandbox_config = None
     logger.info("Phase 2 sandbox cleanup complete")
@@ -345,10 +355,90 @@ async def terminal_stats():
     """Get terminal connection statistics."""
     if not terminal_manager:
         raise HTTPException(status_code=503, detail="Terminal manager not available")
-    
+
     return JSONResponse(status_code=200, content={
         "active_connections": len(terminal_manager.active_connections),
         "session_streams": len(terminal_manager.session_streams),
+    })
+
+
+# =============================================================================
+# Vibe Room Web Interface
+# =============================================================================
+
+@app.get("/vibe/{room_id}", response_class=HTMLResponse)
+async def get_vibe_room(request: Request, room_id: str):
+    """Serve the vibe coding room web interface."""
+    if not opencode_integration:
+        raise HTTPException(status_code=503, detail="OpenCode integration not available")
+
+    # Get vibe room
+    room = opencode_integration.get_vibe_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Vibe room not found")
+
+    # Get associated session
+    session = opencode_integration.sessions.get(room.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Generate OpenCode URL for embedding
+    opencode_url = f"{opencode_integration.config.opencode_server_url}"
+
+    return templates.TemplateResponse("vibe_room.html", {
+        "request": request,
+        "room": room,
+        "session": session,
+        "opencode_url": opencode_url
+    })
+
+
+@app.get("/api/v1/vibe/rooms/{room_id}")
+async def get_vibe_room_api(room_id: str):
+    """Get vibe room information via API."""
+    if not opencode_integration:
+        raise HTTPException(status_code=503, detail="OpenCode integration not available")
+
+    room = opencode_integration.get_vibe_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Vibe room not found")
+
+    return JSONResponse(status_code=200, content={
+        "room": room.model_dump(),
+        "session": opencode_integration.sessions.get(room.session_id).model_dump() if room.session_id else None
+    })
+
+
+@app.post("/api/v1/vibe/rooms/{room_id}/messages")
+async def add_vibe_message(room_id: str, message: str, user_id: str = "anonymous"):
+    """Add a message to a vibe room."""
+    if not opencode_integration:
+        raise HTTPException(status_code=503, detail="OpenCode integration not available")
+
+    room = opencode_integration.get_vibe_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Vibe room not found")
+
+    # Add message to vibe room
+    msg = opencode_integration.vibe_manager.add_message(
+        room_id=room_id,
+        content=message,
+        user_id=user_id,
+        username=f"user-{user_id[:8]}"
+    )
+
+    return JSONResponse(status_code=200, content={"message": msg.model_dump()})
+
+
+@app.get("/api/v1/vibe/rooms")
+async def list_vibe_rooms():
+    """List all vibe rooms."""
+    if not opencode_integration:
+        raise HTTPException(status_code=503, detail="OpenCode integration not available")
+
+    rooms = opencode_integration.vibe_manager.list_rooms()
+    return JSONResponse(status_code=200, content={
+        "rooms": [room.model_dump() for room in rooms]
     })
 
 
