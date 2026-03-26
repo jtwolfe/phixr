@@ -72,13 +72,16 @@ def setup_webhook_routes(comment_handler: CommentHandler):
         event_type = webhook_data.get("object_kind")
         
         logger.info(f"Received webhook event: {event_type}")
+        logger.debug(f"Full webhook payload: {webhook_data}")
         
         # Handle issue note (comment) event
         if event_type == "note":
             noteable_type = webhook_data.get("object_attributes", {}).get("noteable_type")
             
             if noteable_type == "Issue":
+                logger.info("Processing Issue comment")
                 success = comment_handler.handle_issue_comment(webhook_data)
+                logger.info(f"Comment handler returned: {success}")
                 
                 if success:
                     return JSONResponse(

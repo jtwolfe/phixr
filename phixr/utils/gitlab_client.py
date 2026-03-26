@@ -183,18 +183,25 @@ class GitLabClient:
         Returns:
             Comment data if successful, None otherwise
         """
+        logger.info(f"Attempting to add comment to issue {project_id}/{issue_id}")
+        logger.debug(f"GitLab URL: {self.gitlab_url}")
+        logger.debug(f"Comment text preview: {comment_text[:100]}...")
+        
         try:
+            logger.debug(f"Getting project {project_id}...")
             project = self.gl.projects.get(project_id)
+            logger.debug(f"Getting issue {issue_id}...")
             issue = project.issues.get(issue_id)
+            logger.debug(f"Creating note...")
             note = issue.notes.create({'body': comment_text})
-            logger.info(f"Added comment to issue {project_id}/{issue_id}")
+            logger.info(f"Successfully added comment to issue {project_id}/{issue_id} (note_id={note.id})")
             return {
                 'id': note.id,
                 'body': note.body,
                 'created_at': note.created_at
             }
         except Exception as e:
-            logger.error(f"Failed to add comment to issue {project_id}/{issue_id}: {e}")
+            logger.error(f"Failed to add comment to issue {project_id}/{issue_id}: {e}", exc_info=True)
             return None
     
     def assign_issue(self, project_id: int, issue_id: int, 
@@ -219,3 +226,28 @@ class GitLabClient:
         except Exception as e:
             logger.error(f"Failed to assign issue {project_id}/{issue_id}: {e}")
             return False
+    
+    def get_project(self, project_id: int) -> Optional[Dict[str, Any]]:
+        """Get project details.
+        
+        Args:
+            project_id: GitLab project ID
+            
+        Returns:
+            Project data if found, None otherwise
+        """
+        try:
+            project = self.gl.projects.get(project_id)
+            return {
+                'id': project.id,
+                'name': project.name,
+                'path': project.path,
+                'path_with_namespace': project.path_with_namespace,
+                'http_url_to_repo': project.http_url_to_repo,
+                'ssh_url_to_repo': project.ssh_url_to_repo,
+                'web_url': project.web_url,
+                'default_branch': project.default_branch,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get project {project_id}: {e}")
+            return None

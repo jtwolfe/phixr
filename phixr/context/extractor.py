@@ -36,6 +36,14 @@ class ContextExtractor:
             logger.error(f"Failed to extract context for issue {project_id}/{issue_id}")
             return None
         
+        # Get project details for repo_url
+        project_data = self.gitlab_client.get_project(project_id)
+        repo_url = ""
+        repo_name = ""
+        if project_data:
+            repo_url = project_data.get('http_url_to_repo', '')
+            repo_name = project_data.get('name', '')
+        
         # Get issue notes/comments
         comments = self.gitlab_client.get_issue_notes(project_id, issue_id)
         
@@ -65,7 +73,9 @@ class ContextExtractor:
             created_at=datetime.fromisoformat(str(issue_data['created_at']).replace('Z', '+00:00')),
             updated_at=datetime.fromisoformat(str(issue_data['updated_at']).replace('Z', '+00:00')),
             comments=formatted_comments,
-            linked_issues=[]
+            linked_issues=[],
+            repo_url=repo_url,
+            repo_name=repo_name
         )
         
         logger.info(f"Extracted context for issue {project_id}/{issue_id}: {context.title}")

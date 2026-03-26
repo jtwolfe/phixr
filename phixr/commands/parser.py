@@ -16,14 +16,14 @@ class CommandParser:
         'ai-status': 'Show bot status and context',
         'ai-help': 'List available commands',
         'ai-acknowledge': "Bot acknowledges it's ready",
+        'ai-plan': 'AI generates implementation plan',
+        'ai-implement': 'AI implements the task (after /ai-plan)',
+        'ai-review-mr': 'AI reviews a merge request',
+        'ai-fix-tests': 'AI fixes failing tests',
     }
     
     # Placeholder for future commands
     FUTURE_COMMANDS = {
-        'ai-plan': 'AI generates implementation plan',
-        'ai-implement': 'AI implements the task',
-        'ai-review-mr': 'AI reviews a merge request',
-        'ai-fix-tests': 'AI fixes failing tests',
         'ai-abort': 'Abort current operation',
     }
     

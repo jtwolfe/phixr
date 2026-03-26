@@ -1,12 +1,36 @@
 """Sandbox configuration for OpenCode container execution."""
 
+import os
+from pathlib import Path
 from typing import List, Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field, ConfigDict
 
 
+def _load_env_file():
+    """Load environment variables from .env.local file."""
+    env_path = Path("/app/.env.local")
+    if env_path.exists():
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    if key and value:
+                        os.environ.setdefault(key.strip(), value.strip())
+
+
+_load_env_file()
+
+
 class SandboxConfig(BaseSettings):
     """Configuration for sandbox container execution."""
+    
+    # ==================== Phase 2 OpenCode API ====================
+    opencode_server_url: str = Field(
+        default="http://localhost:4096",
+        description="OpenCode HTTP API server URL (Phase 2)"
+    )
     
     # ==================== Docker Settings ====================
     docker_host: str = Field(
@@ -68,9 +92,21 @@ class SandboxConfig(BaseSettings):
     
     # ==================== Model Configuration ====================
     model: str = Field(
-        default="local:ollama",
+        default="opencode/big-pickle",
         description="Default LLM model to use"
     )
+    
+    # OpenCode Zen API key - loaded via environment variable
+    # Note: env_prefix="PHIXR_SANDBOX_" adds prefix, so field name without prefix
+    opencode_zen_api_key: str = Field(
+        default="",
+        description="OpenCode Zen API key for big-pickle model"
+    )
+    
+    @property
+    def zen_api_key(self) -> str:
+        """Get the Zen API key."""
+        return self.opencode_zen_api_key
     
     model_temperature: float = Field(
         default=0.7,

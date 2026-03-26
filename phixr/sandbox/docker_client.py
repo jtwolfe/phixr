@@ -140,43 +140,44 @@ class DockerClientWrapper:
                 logger.info(f"Pulling Docker image: {image}")
                 self.client.images.pull(image)
             
-            # Prepare resource limits
-            host_config = {
-                "network_mode": network,
-                "mounts": [
-                    {
-                        "Type": "bind",
-                        "Source": spec["bind"],
-                        "Target": path,
-                        "ReadOnly": spec.get("mode") == "ro",
-                    }
-                    for path, spec in mounts.items()
-                ],
+            # Prepare volume binds
+            volumes = [
+                f"{spec['bind']}:{path}:{'ro' if spec.get('mode') == 'ro' else 'rw'}"
+                for path, spec in mounts.items()
+            ]
+            
+            # Prepare container kwargs
+            container_kwargs = {
+                "detach": True,
+                "environment": env,
+                "working_dir": "/workspace",
+                "stdin_open": True,
+                "tty": True,
+                "network": network,
+                "volumes": volumes,
             }
             
             if memory_limit:
                 try:
                     # Convert memory limit to bytes
                     mem_bytes = self.config.get_docker_memory_limit()
-                    host_config["memory"] = mem_bytes
-                    host_config["memswap"] = mem_bytes
+                    container_kwargs["mem_limit"] = mem_bytes
                 except ValueError as e:
                     logger.warning(f"Invalid memory limit: {e}")
             
-            host_config["cpu_quota"] = int(self.config.cpu_limit * 100000)
+            container_kwargs["cpu_quota"] = int(self.config.cpu_limit * 100000)
             
-            # Create and run container
+            # Create and run container using create + start approach
             logger.info(f"Running container from image: {image}")
-            container = self.client.containers.run(
+            
+            # Create container first
+            container = self.client.containers.create(
                 image,
-                detach=True,
-                environment=env,
-                host_config=host_config,
-                working_dir="/workspace",
-                stdin_open=True,
-                stdout=True,
-                stderr=True,
+                **container_kwargs,
             )
+            
+            # Start the container
+            container.start()
             
             container_id = container.id[:12]
             logger.info(f"Container started: {container_id}")

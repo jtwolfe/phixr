@@ -1,11 +1,13 @@
-"""Context injection and serialization for OpenCode containers."""
+"""Context injection and serialization for OpenCode sessions.
+
+For API-based sessions, context is injected via initial messages rather than
+file volumes. This module provides utilities for preparing context for injection.
+"""
 
 import json
-import tempfile
 import logging
-from pathlib import Path
-from typing import Dict, Optional, Tuple
 from datetime import datetime
+from typing import Dict, Optional
 
 from phixr.models.issue_context import IssueContext
 from phixr.models.execution_models import ExecutionConfig, ExecutionMode
@@ -15,99 +17,33 @@ logger = logging.getLogger(__name__)
 
 
 class ContextInjector:
-    """Injects Phixr issue context into OpenCode containers."""
+    """Prepares and injects Phixr issue context into OpenCode sessions.
+    
+    With API-based sessions, context is passed via the initial message
+    rather than as mounted volumes.
+    """
     
     def __init__(self, config: SandboxConfig):
         """Initialize context injector."""
         self.config = config
-        self.temp_dirs: Dict[str, Path] = {}
-        self._temp_dir_objects: Dict[str, tempfile.TemporaryDirectory] = {}
     
-    def prepare_context_volume(self, context: IssueContext, 
-                              execution_config: ExecutionConfig) -> Tuple[str, str]:
-        """Prepare and create context volume directory.
+    def build_context_message(self, context: IssueContext, 
+                             execution_config: ExecutionConfig) -> str:
+        """Build the context message to inject into OpenCode session.
         
-        Creates a temporary directory with JSON context files that will be
-        mounted into the container at /phixr-context.
+        This message will be sent as the first user message to OpenCode,
+        providing all necessary context for the task.
         
         Args:
             context: Issue context from GitLab/GitHub
             execution_config: Execution configuration
             
         Returns:
-            Tuple of (volume_path, volume_name)
-            
-        Raises:
-            ValueError: If context is invalid or too large
-        """
-        session_id = execution_config.session_id
-        
-        # Validate context size
-        context_json = context.model_dump_json()
-        if len(context_json.encode()) > self.config.context_volume_size:
-            raise ValueError(
-                f"Context too large ({len(context_json)} bytes > "
-                f"{self.config.context_volume_size} bytes)"
-            )
-        
-        # Create temporary directory
-        temp_dir = tempfile.TemporaryDirectory(prefix=f"phixr-context-{session_id}-")
-        volume_path = Path(temp_dir.name)
-        
-        logger.info(f"Creating context volume at {volume_path}")
-        
-        # Write issue context
-        issue_file = volume_path / "issue.json"
-        issue_file.write_text(context_json, encoding="utf-8")
-        logger.debug(f"Wrote issue context to {issue_file}")
-        
-        # Write execution configuration
-        exec_file = volume_path / "config.json"
-        exec_config_dict = execution_config.model_dump()
-        exec_file.write_text(json.dumps(exec_config_dict, indent=2, default=str), encoding="utf-8")
-        logger.debug(f"Wrote execution config to {exec_file}")
-        
-        # Write repository metadata
-        repo_file = volume_path / "repository.json"
-        repo_metadata = {
-            "url": context.repo_url,
-            "name": context.repo_name,
-            "language": context.language,
-            "structure": context.structure,
-            "git_provider": self.config.git_provider_type,
-            "git_provider_url": self.config.git_provider_url,
-        }
-        repo_file.write_text(json.dumps(repo_metadata, indent=2), encoding="utf-8")
-        logger.debug(f"Wrote repository metadata to {repo_file}")
-        
-        # Write initial instructions
-        instructions_file = volume_path / "instructions.md"
-        instructions = self._generate_instructions(context, execution_config)
-        instructions_file.write_text(instructions, encoding="utf-8")
-        logger.debug(f"Wrote instructions to {instructions_file}")
-        
-        # Store reference for cleanup later
-        volume_name = f"phixr-context-{session_id}"
-        self.temp_dirs[volume_name] = volume_path
-        self._temp_dir_objects[volume_name] = temp_dir
-        
-        logger.info(f"Context volume prepared: {volume_name}")
-        return str(volume_path), volume_name
-    
-    def _generate_instructions(self, context: IssueContext, 
-                              execution_config: ExecutionConfig) -> str:
-        """Generate initial instructions for OpenCode.
-        
-        Args:
-            context: Issue context
-            execution_config: Execution configuration
-            
-        Returns:
-            Markdown instructions string
+            Formatted context message string
         """
         mode_str = "analysis and exploration (read-only)" if execution_config.mode == ExecutionMode.PLAN else "development"
         
-        instructions = f"""# Phixr OpenCode Session Instructions
+        message = f"""# Phixr OpenCode Session
 
 ## Issue
 **ID:** {context.issue_id}
@@ -135,19 +71,84 @@ You are in **{mode_str}** mode.
 4. Follow the repository's coding standards and patterns
 5. Add tests for new functionality
 
-### Files & Context
-Repository structure has been provided. Review the code organization before starting.
+### Repository Structure
+{self._format_repo_structure(context)}
 
 ---
-
 Generated at {datetime.utcnow().isoformat()}Z by Phixr
 """
-        return instructions
+        return message
+    
+    def _format_repo_structure(self, context: IssueContext) -> str:
+        """Format repository structure for display.
+        
+        Args:
+            context: Issue context
+            
+        Returns:
+            Formatted structure string
+        """
+        if not context.structure:
+            return "Structure not available"
+        
+        if isinstance(context.structure, dict):
+            lines = []
+            for path, description in context.structure.items():
+                lines.append(f"- **{path}**: {description}")
+            return "\n".join(lines)
+        
+        return str(context.structure)
+    
+    def build_system_prompt(self, execution_config: ExecutionConfig) -> str:
+        """Build system prompt for OpenCode agent.
+        
+        Args:
+            execution_config: Execution configuration
+            
+        Returns:
+            System prompt string
+        """
+        mode_instructions = {
+            ExecutionMode.PLAN: """You are in READ-ONLY PLAN mode. You should:
+1. Analyze the repository and issue thoroughly
+2. Identify the files and components that need changes
+3. Create a detailed plan for solving the issue
+4. Do NOT make any actual code changes
+5. Use 'git diff' to show what changes would be needed
+6. Prepare a clear summary of your analysis""",
+            ExecutionMode.BUILD: """You are in DEVELOPMENT mode. You should:
+1. Analyze the repository and understand the issue
+2. Make necessary code changes to fix the issue
+3. Commit changes with clear commit messages
+4. Add tests for new functionality
+5. Use 'git diff' to verify your changes
+6. Provide a summary of what was implemented""",
+            ExecutionMode.REVIEW: """You are in REVIEW mode. You should:
+1. Review the existing code and changes
+2. Provide feedback and suggestions
+3. Identify potential issues or improvements
+4. Do NOT make changes to the codebase
+5. Use code analysis and best practices
+6. Provide a detailed review summary""",
+        }
+        
+        instructions = mode_instructions.get(execution_config.mode, "")
+        
+        return f"""You are an expert software engineer working with the OpenCode agent framework.
+
+Your task is to help solve a GitHub/GitLab issue by analyzing code and making necessary changes.
+
+{instructions}
+
+Always follow best practices and communicate your findings clearly."""
     
     def create_environment_variables(self, context: IssueContext,
                                     execution_config: ExecutionConfig,
                                     git_token: str) -> Dict[str, str]:
-        """Create environment variables for container.
+        """Create environment variables for OpenCode session.
+        
+        Note: With API-based sessions, we pass env vars via the OpenCode API
+        rather than Docker environment. These are primarily for context.
         
         Args:
             context: Issue context
@@ -178,86 +179,15 @@ Generated at {datetime.utcnow().isoformat()}Z by Phixr
             "OPENCODE_LOG_LEVEL": self.config.log_level,
         }
         
-        # Add initial prompt if provided
-        if execution_config.initial_prompt:
-            env_vars["OPENCODE_INITIAL_PROMPT"] = execution_config.initial_prompt
+        # Add OpenCode Zen API key if configured
+        if self.config.zen_api_key:
+            env_vars["OPENCODE_ZEN_API_KEY"] = self.config.zen_api_key
+            logger.info("OpenCode Zen API key configured for session")
         
         return env_vars
     
-    def cleanup_context_volume(self, volume_name: str) -> bool:
-        """Clean up temporary context volume.
-        
-        Args:
-            volume_name: Name of the volume to clean up
-            
-        Returns:
-            True if cleanup successful, False otherwise
-        """
-        if volume_name not in self.temp_dirs:
-            logger.warning(f"Volume {volume_name} not found in cleanup registry")
-            return False
-        
-        try:
-            # Remove the temp directory object (which cleans up the directory)
-            if volume_name in self._temp_dir_objects:
-                temp_dir_obj = self._temp_dir_objects[volume_name]
-                temp_dir_obj.cleanup()
-                del self._temp_dir_objects[volume_name]
-                logger.info(f"Cleaned up context volume: {volume_name}")
-            
-            del self.temp_dirs[volume_name]
-            return True
-        except Exception as e:
-            logger.error(f"Error cleaning up context volume {volume_name}: {e}")
-            return False
-    
     def cleanup_all(self) -> None:
-        """Clean up all temporary volumes."""
-        for volume_name in list(self.temp_dirs.keys()):
-            self.cleanup_context_volume(volume_name)
-    
-    def __del__(self):
-        """Ensure cleanup on object destruction."""
-        self.cleanup_all()
+        """Clean up temporary resources (no-op for API-based sessions)."""
+        pass
 
 
-if __name__ == "__main__":
-    # Example usage
-    config = SandboxConfig()
-    injector = ContextInjector(config)
-    
-    # Create a sample context
-    from phixr.models.issue_context import IssueContext
-    
-    sample_context = IssueContext(
-        issue_id=123,
-        project_id=456,
-        title="Test Issue",
-        description="Test description",
-        url="https://gitlab.com/test/repo/-/issues/123",
-        author="test-user",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
-        repo_url="https://github.com/test/repo.git",
-        repo_name="repo",
-        language="python",
-        structure={"src/": "Source code"},
-        labels=["feature"],
-    )
-    
-    exec_config = ExecutionConfig(
-        session_id="test-sess-123",
-        issue_id=123,
-        repo_url="https://github.com/test/repo.git",
-        branch="ai-work/123",
-    )
-    
-    try:
-        volume_path, volume_name = injector.prepare_context_volume(sample_context, exec_config)
-        print(f"✓ Context volume prepared: {volume_name}")
-        print(f"  Path: {volume_path}")
-        
-        env_vars = injector.create_environment_variables(sample_context, exec_config, "test-token")
-        print(f"✓ Environment variables created: {len(env_vars)} vars")
-    except Exception as e:
-        print(f"✗ Error: {e}")

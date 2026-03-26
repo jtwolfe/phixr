@@ -1,30 +1,52 @@
-version: '3.8'
-
 services:
+  opencode-server:
+    image: node:20-slim
+    working_dir: /app
+    environment:
+      OPENCODE_ZEN_API_KEY: ${OPENCODE_ZEN_API_KEY:-}
+    command: >
+      bash -c "
+        npm install -g opencode-ai@latest &&
+        opencode serve --hostname 0.0.0.0 --port 4096
+      "
+    ports:
+      - "4096:4096"
+    networks:
+      - phixr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4096/global/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    profiles:
+      - phase-2
+    restart: unless-stopped
+
   phixr-bot:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    ports:
-      - "8000:8000"
+    image: phixr-bot:latest
+    network_mode: host
+    env_file:
+      - path: .env.local
+        required: true
     environment:
-      GITLAB_URL: http://host.docker.internal:8080
-      GITLAB_BOT_TOKEN: ${GITLAB_BOT_TOKEN}
-      BOT_USERNAME: phixr-bot
-      BOT_EMAIL: phixr-bot@localhost
+      GITLAB_URL: ${GITLAB_URL:-http://host.docker.internal:8080}
+      GITLAB_BOT_TOKEN: ${GITLAB_BOT_TOKEN:-}
+      BOT_USERNAME: ${BOT_USERNAME:-phixr-bot}
+      BOT_EMAIL: ${BOT_EMAIL:-phixr-bot@localhost}
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8000
-      WEBHOOK_SECRET: phixr-webhook-secret
-      POSTGRES_URL: postgresql://phixr:phixr@postgres:5432/phixr
-      REDIS_URL: redis://redis:6379/0
-      LOG_LEVEL: INFO
-    depends_on:
-      - postgres
-      - redis
-    networks:
-      - phixr-network
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-phixr-webhook-secret}
+      POSTGRES_URL: postgresql://phixr:phixr@localhost:5432/phixr
+      REDIS_URL: redis://localhost:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PHIXR_OPENCODE_SERVER_URL: ${PHIXR_OPENCODE_SERVER_URL:-http://localhost:4096}
     volumes:
       - ./:/app
+      - /var/run/docker.sock:/var/run/docker.sock
 
   postgres:
     image: postgres:15-alpine
@@ -54,4 +76,5 @@ volumes:
 
 networks:
   phixr-network:
+    name: phixr-network
     driver: bridge

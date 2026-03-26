@@ -1,7 +1,7 @@
 """Data models for sandbox execution and session management."""
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,72 @@ class ExecutionMode(str, Enum):
     BUILD = "build"  # Full access, can make changes
     PLAN = "plan"    # Read-only, analysis only
     REVIEW = "review"  # Review existing code
+
+
+class SessionParticipant(BaseModel):
+    """Represents a participant in a shared session."""
+    user_id: str = Field(..., description="Unique user identifier")
+    username: str = Field(..., description="User's display name")
+    role: str = Field(
+        default="viewer",
+        description="User role: 'owner', 'editor', or 'viewer'"
+    )
+    joined_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SessionMessage(BaseModel):
+    """Represents a message in a session (supports multi-user attribution)."""
+    id: str = Field(..., description="Unique message identifier")
+    user_id: Optional[str] = Field(None, description="User who sent this message (None for AI)")
+    username: Optional[str] = Field(None, description="User's display name")
+    role: Optional[str] = Field(None, description="User role")
+    content: str = Field(..., description="Message content")
+    is_ai: bool = Field(default=False, description="True if message is from AI")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    edited_at: Optional[datetime] = None
+
+
+class VibeRoom(BaseModel):
+    """Represents a shared collaborative session for multi-user coding.
+    
+    In future phases, vibe rooms will enable:
+    - Real-time collaboration between multiple users
+    - Shared context and session state
+    - Message attribution and threading
+    - Permission-based access control
+    """
+    id: str = Field(..., description="Unique vibe room identifier")
+    name: str = Field(..., description="Vibe room name")
+    description: Optional[str] = Field(None, description="Room description")
+    
+    # Core session reference
+    session_id: str = Field(..., description="Associated OpenCode session ID")
+    
+    # Participants and access control
+    owner_id: str = Field(..., description="User ID of room owner")
+    participants: Dict[str, SessionParticipant] = Field(
+        default_factory=dict,
+        description="Map of user_id -> Participant"
+    )
+    sharing_token: Optional[str] = Field(
+        None,
+        description="Token for sharing room access (Phase 3)"
+    )
+    
+    # Message history with attribution
+    messages: List[SessionMessage] = Field(
+        default_factory=list,
+        description="Messages with user attribution"
+    )
+    
+    # Metadata
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    archived: bool = Field(default=False, description="Whether room is archived")
+    
+    class Config:
+        use_enum_values = True
 
 
 class Session(BaseModel):
@@ -50,6 +116,16 @@ class Session(BaseModel):
     logs: str = Field(default="")
     exit_code: Optional[int] = None
     errors: List[str] = Field(default_factory=list)
+    
+    # Multi-user foundation (Phase 3+)
+    vibe_room_id: Optional[str] = Field(
+        None,
+        description="Associated vibe room ID for collaborative sessions"
+    )
+    single_user: bool = Field(
+        default=True,
+        description="Whether this is a single-user session (Phase 2) or shared (Phase 3+)"
+    )
     
     class Config:
         use_enum_values = True
