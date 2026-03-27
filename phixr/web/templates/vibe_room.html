@@ -203,7 +203,7 @@
             <div class="sidebar-header">
                 <h2>{{ room.name }}</h2>
                 <div class="status">
-                    {{ len(room.participants) }} participant(s)
+                    {{ participant_count }} participant(s)
                 </div>
             </div>
             <div class="sidebar-content">
@@ -231,7 +231,8 @@
             ></iframe>
             <div class="controls">
                 <button class="btn btn-primary" onclick="refreshSession()">Refresh</button>
-                <button class="btn btn-danger" onclick="endSession()">End Session</button>
+                <button class="btn btn-success" onclick="closeOutSession()">Close Out & Commit</button>
+                <button class="btn btn-danger" onclick="endSession()">End Session (No Commit)</button>
             </div>
         </div>
     </div>
@@ -242,11 +243,38 @@
             location.reload();
         }
 
-        // End session function (placeholder)
+        // Close out session with commit
+        async function closeOutSession() {
+            if (!confirm('Commit all changes and push to branch? This will:\n1. Add and commit all changes\n2. Push to the branch\n3. Clean up the session')) {
+                return;
+            }
+
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'message system';
+            statusDiv.innerHTML = '<em>Committing changes and pushing to branch...</em>';
+            document.getElementById('messages').appendChild(statusDiv);
+
+            try {
+                const response = await fetch(`/vibe/${window.roomId || 'current'}/closeout`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    statusDiv.innerHTML = '<em>✅ Changes committed and pushed successfully. Session cleaned up.</em>';
+                } else {
+                    statusDiv.innerHTML = `<em>❌ Failed to commit changes: ${response.status}</em>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<em>❌ Error: ${error.message}</em>`;
+            }
+        }
+
+        // End session function (no commit)
         function endSession() {
-            if (confirm('End this vibe coding session?')) {
-                // TODO: Call API to end session
-                alert('Session ending... (not implemented yet)');
+            if (confirm('End this vibe coding session WITHOUT committing changes?')) {
+                // TODO: Call API to end session without commit
+                alert('Session ending without commit... (not fully implemented yet)');
             }
         }
 

@@ -126,9 +126,16 @@ class Session(BaseModel):
         default=True,
         description="Whether this is a single-user session (Phase 2) or shared (Phase 3+)"
     )
-    
+
+    # Monitoring
+    monitoring_task: Optional[object] = Field(
+        None,
+        description="Background task monitoring plan completion"
+    )
+
     class Config:
         use_enum_values = True
+        arbitrary_types_allowed = True
 
 
 class ExecutionResult(BaseModel):

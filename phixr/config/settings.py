@@ -29,6 +29,9 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    # ==================== Service URLs ====================
+    # These should be configured via environment variables for deployment
+    
     # GitLab Configuration
     gitlab_url: str = "http://localhost:8080"
     gitlab_root_password: str = ""
@@ -48,14 +51,20 @@ class Settings(BaseSettings):
     webhook_secret: str = "phixr-webhook-secret"
     webhook_url: str = "http://localhost:8000/webhooks/gitlab"
     
-    # Database Configuration
-    postgres_url: str = "postgresql://phixr:phixr@localhost:5432/phixr"
+    # OpenCode Server URL (for container environments, can be different host)
+    opencode_server_url: str = "http://localhost:4096"
     
-    # Redis Configuration
-    redis_url: str = "redis://localhost:6379/0"
+    # Phixr API Base URL (used in vibe room links, public-facing URL)
+    phixr_api_url: str = "http://localhost:8000"
+    
+    # Database Configuration (with defaults for Docker network)
+    postgres_url: str = "postgresql://phixr:phixr@postgres:5432/phixr"
+    
+    # Redis Configuration (with defaults for Docker network)
+    redis_url: str = "redis://redis:6379/0"
     
     # Logging
-    log_level: str = "INFO"
+    log_level: str = "DEBUG"
     
     # OpenCode Zen Configuration
     opencode_zen_api_key: str = ""

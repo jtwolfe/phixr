@@ -127,6 +127,30 @@ class OpenCodeIntegrationService:
                 # Store OpenCode session ID
                 session.container_id = opencode_session.get("id", "")
 
+                # Build and inject context message (CRITICAL: without this, OpenCode has no context!)
+                context_message = self.context_injector.build_context_message(
+                    context,
+                    ExecutionConfig(
+                        session_id=session_id,
+                        issue_id=context.issue_id,
+                        repo_url=context.repo_url,
+                        branch=session.branch,
+                        mode=execution_mode
+                    )
+                )
+
+                # Send initial message with context to UI session
+                try:
+                    await self.client.send_message(
+                        session_id=session.container_id,
+                        message=context_message,
+                        model=session.model
+                    )
+                    logger.info(f"Sent context message to UI session: {session.container_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to send context message to UI session {session.container_id}: {e}")
+                    # Continue anyway - UI mode can still work without initial message
+
                 # Create vibe room for UI embedding
                 vibe_room = self.vibe_manager.create_room(session, owner_id)
                 session.vibe_room_id = vibe_room.id
@@ -158,8 +182,7 @@ class OpenCodeIntegrationService:
                 await self.client.send_message(
                     session_id=session.container_id,
                     message=context_message,
-                    model=session.model,
-                    temperature=session.temperature
+                    model=session.model
                 )
 
                 logger.info(f"Created API session: {session_id} (opencode: {session.container_id})")
@@ -268,14 +291,14 @@ class OpenCodeIntegrationService:
         """Get vibe room associated with a session."""
         return self.vibe_manager.get_room_by_session(session_id)
 
-    def create_vibe_session_url(self, session_id: str, base_url: str = "http://localhost:8000") -> Optional[str]:
+    def create_vibe_session_url(self, session_id: str) -> Optional[str]:
         """Create URL for accessing the vibe coding session."""
         session = self.sessions.get(session_id)
         if not session or not session.vibe_room_id:
             return None
 
         # For UI embedding mode, return the vibe room URL
-        return f"{base_url}/vibe/{session.vibe_room_id}"
+        return f"{self.base_url}/vibe/{session.vibe_room_id}"
 
     async def monitor_plan_completion(self, session_id: str, gitlab_client, project_id: int, issue_id: int) -> None:
         """Monitor a planning session and send results back to GitLab.

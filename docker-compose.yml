@@ -14,11 +14,11 @@ services:
     networks:
       - phixr-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4096/global/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      test: ["CMD", "curl", "-f", "-s", "http://localhost:4096/global/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     profiles:
       - phase-2
     restart: unless-stopped
@@ -28,22 +28,38 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: phixr-bot:latest
-    network_mode: host
+    networks:
+      - phixr-network
+    ports:
+      - "8000:8000"
     env_file:
       - path: .env.local
         required: true
     environment:
-      GITLAB_URL: ${GITLAB_URL:-http://host.docker.internal:8080}
+      # Core configuration
       GITLAB_BOT_TOKEN: ${GITLAB_BOT_TOKEN:-}
+      GITLAB_ROOT_TOKEN: ${GITLAB_ROOT_TOKEN:-}
       BOT_USERNAME: ${BOT_USERNAME:-phixr-bot}
       BOT_EMAIL: ${BOT_EMAIL:-phixr-bot@localhost}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+      # Server configuration
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8000
+      
+      # Service URLs - configured for Docker network
+      GITLAB_URL: ${GITLAB_URL:-http://host.docker.internal:8080}
+      OPENCODE_SERVER_URL: ${OPENCODE_SERVER_URL:-http://opencode-server:4096}
+      PHIXR_API_URL: ${PHIXR_API_URL:-http://phixr-bot:8000}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://phixr-bot:8000/webhooks/gitlab}
+      
+      # Database and cache - using service names for Docker network
+      POSTGRES_URL: ${POSTGRES_URL:-postgresql://phixr:phixr@postgres:5432/phixr}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      
+      # Webhook security
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-phixr-webhook-secret}
-      POSTGRES_URL: postgresql://phixr:phixr@localhost:5432/phixr
-      REDIS_URL: redis://localhost:6379/0
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      PHIXR_OPENCODE_SERVER_URL: ${PHIXR_OPENCODE_SERVER_URL:-http://localhost:4096}
     volumes:
       - ./:/app
       - /var/run/docker.sock:/var/run/docker.sock

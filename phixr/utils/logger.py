@@ -13,15 +13,24 @@ def setup_logger(name: str, level: str = "INFO") -> logging.Logger:
     Returns:
         Configured logger
     """
-    logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, level.upper()))
+    # Configure root logger first
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, level.upper()))
     
-    # Console handler
+    # Clear any existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Console handler for root logger
     handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    root_logger.addHandler(handler)
+    
+    # Get and return the logger for the specific module
+    logger = logging.getLogger(name)
+    logger.setLevel(getattr(logging, level.upper()))
     
     return logger

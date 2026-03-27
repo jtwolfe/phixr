@@ -28,8 +28,14 @@ class SandboxConfig(BaseSettings):
     
     # ==================== Phase 2 OpenCode API ====================
     opencode_server_url: str = Field(
-        default="http://localhost:4096",
-        description="OpenCode HTTP API server URL (Phase 2)"
+        default="http://opencode-server:4096",
+        description="OpenCode HTTP API server URL (Phase 2) - use service name for Docker, localhost for dev"
+    )
+
+    # ==================== Phixr Web Interface ====================
+    phixr_base_url: str = Field(
+        default="http://localhost:8000",
+        description="Base URL for Phixr web interface (for vibe room links)"
     )
     
     # ==================== Docker Settings ====================
@@ -76,8 +82,8 @@ class SandboxConfig(BaseSettings):
     
     # ==================== Git / VCS ====================
     git_provider_url: str = Field(
-        default="http://localhost:8080",
-        description="GitLab/GitHub instance URL"
+        default="http://host.docker.internal:8080",
+        description="GitLab/GitHub instance URL - adjust for your environment"
     )
     
     git_provider_token: str = Field(
@@ -88,6 +94,17 @@ class SandboxConfig(BaseSettings):
     git_provider_type: str = Field(
         default="gitlab",
         description="Type of git provider (gitlab, github, gitea)"
+    )
+    
+    # ==================== SSH Key Management ====================
+    git_ssh_key_path: str = Field(
+        default="/root/.ssh/id_rsa",
+        description="Path to SSH private key for git operations"
+    )
+    
+    git_ssh_key_passphrase: str = Field(
+        default="",
+        description="SSH key passphrase (if needed)"
     )
     
     # ==================== Model Configuration ====================
@@ -189,13 +206,13 @@ class SandboxConfig(BaseSettings):
     
     # ==================== Redis & Database ====================
     redis_url: str = Field(
-        default="redis://localhost:6379/1",
-        description="Redis connection string for session state"
+        default="redis://redis:6379/1",
+        description="Redis connection string for session state - use service name in Docker"
     )
     
     database_url: str = Field(
-        default="postgresql://phixr:phixr@localhost:5432/phixr",
-        description="PostgreSQL connection for session history"
+        default="postgresql://phixr:phixr@postgres:5432/phixr",
+        description="PostgreSQL connection for session history - use service name in Docker"
     )
     
     model_config = ConfigDict(

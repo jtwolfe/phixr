@@ -6,6 +6,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     git \
     curl \
+    openssl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
@@ -13,6 +15,10 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy certificate setup script
+COPY docker/setup-gitlab-cert.sh /usr/local/bin/setup-gitlab-cert.sh
+RUN chmod +x /usr/local/bin/setup-gitlab-cert.sh
 
 # Copy application code
 COPY phixr/ ./phixr/
@@ -25,5 +31,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the application
-CMD ["python", "-m", "phixr.main"]
+# Run the application with certificate setup
+CMD ["/bin/bash", "-c", "/usr/local/bin/setup-gitlab-cert.sh && python -m phixr.main"]

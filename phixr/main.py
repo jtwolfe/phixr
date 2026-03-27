@@ -17,6 +17,7 @@ from phixr.webhooks import setup_webhook_routes
 from phixr.config.sandbox_config import SandboxConfig
 from phixr.integration.opencode_integration_service import OpenCodeIntegrationService, IntegrationMode
 from phixr.terminal.websocket_handler import WebTerminalHandler
+from phixr.access_management import AccessManagementService
 from phixr.models.execution_models import (
     Session, ExecutionResult, ExecutionMode, SessionStatus
 )
@@ -46,8 +47,11 @@ sandbox_config: Optional[SandboxConfig] = None
 opencode_integration: Optional[OpenCodeIntegrationService] = None
 terminal_manager: Optional[WebTerminalHandler] = None
 
+# Access management service
+access_manager: Optional[AccessManagementService] = None
 
-def initialize_app():
+
+async def initialize_app():
     """Initialize the application with necessary components."""
     global _gitlab_client, _assignment_handler, _comment_handler
     global sandbox_config, opencode_bridge, terminal_manager
@@ -68,16 +72,16 @@ def initialize_app():
         raise ConnectionError("Cannot connect to GitLab instance")
     
     # Get bot user ID
-    bot_user = _gitlab_client.get_user(settings.bot_username)
+    bot_user = await _gitlab_client.get_user(settings.bot_username)
     if not bot_user:
         logger.error(f"Bot user '{settings.bot_username}' not found")
         raise ValueError(f"Bot user '{settings.bot_username}' not found in GitLab")
-    
+
     bot_user_id = bot_user['id']
     logger.info(f"Bot user ID: {bot_user_id}")
     
     # Initialize handlers
-    _assignment_handler = AssignmentHandler(bot_user_id)
+    _assignment_handler = AssignmentHandler(bot_user_id, _gitlab_client)
     _comment_handler = CommentHandler(_gitlab_client, bot_user_id, _assignment_handler)
     
     # Setup webhook routes
@@ -97,19 +101,36 @@ def initialize_app():
 
 def _initialize_sandbox():
     """Initialize Phase 2 sandbox and OpenCode components."""
-    global sandbox_config, opencode_integration, terminal_manager
+    global sandbox_config, opencode_integration, terminal_manager, access_manager
 
     try:
         logger.info("Initializing Phase 2 sandbox components...")
         sandbox_config = SandboxConfig()
         logger.info(f"  Sandbox config loaded (server: {sandbox_config.opencode_server_url})")
 
-        # Initialize new OpenCode integration service
+        # Initialize access management service
+        if settings.gitlab_root_token:
+            access_manager = AccessManagementService(
+                gitlab_url=settings.gitlab_url,
+                root_token=settings.gitlab_root_token,
+                bot_username=settings.bot_username
+            )
+            logger.info("  Access management service initialized")
+        else:
+            logger.warning("  No GITLAB_ROOT_TOKEN provided - access management disabled")
+
         opencode_integration = OpenCodeIntegrationService(
             sandbox_config,
-            mode=IntegrationMode.UI_EMBED  # For single user vibe coding
+            mode=IntegrationMode.UI_EMBED,  # For single user vibe coding
+            gitlab_token=settings.gitlab_bot_token,
+            access_manager=access_manager,
+            base_url=sandbox_config.phixr_base_url
         )
         logger.info("  OpenCode integration service initialized (UI_EMBED mode)")
+        if settings.gitlab_bot_token:
+            logger.info("  GitLab authentication configured for repository cloning")
+        else:
+            logger.warning("  No GitLab token available - repository cloning may fail")
 
         # TODO: Re-enable terminal manager with new integration service
         # terminal_manager = WebTerminalHandler(opencode_integration)
@@ -125,22 +146,21 @@ def _initialize_sandbox():
         terminal_manager = None
 
 
-def _cleanup_sandbox():
+async def _cleanup_sandbox():
     """Cleanup Phase 2 sandbox components."""
-    global sandbox_config, opencode_integration, terminal_manager
+    global sandbox_config, opencode_integration, terminal_manager, access_manager
 
     if opencode_integration:
         try:
             logger.info("Closing OpenCode integration service...")
-            # Run async cleanup in event loop
-            import asyncio
-            asyncio.run(opencode_integration.close())
+            await opencode_integration.close()
         except Exception as e:
             logger.warning(f"Error closing OpenCode integration: {e}")
         opencode_integration = None
 
     terminal_manager = None
     sandbox_config = None
+    access_manager = None
     logger.info("Phase 2 sandbox cleanup complete")
 
 
@@ -148,7 +168,13 @@ def _cleanup_sandbox():
 async def startup_event():
     """FastAPI startup event."""
     try:
-        initialize_app()
+        await initialize_app()
+
+        # Start access management monitoring
+        if access_manager:
+            await access_manager.start_monitoring()
+            logger.info("Access management monitoring started")
+
     except Exception as e:
         logger.error(f"Failed to initialize Phixr: {e}")
         raise
@@ -158,6 +184,12 @@ async def startup_event():
 async def shutdown_event():
     """FastAPI shutdown event - cleanup Phase 2 resources."""
     logger.info("Phixr shutting down...")
+
+    # Stop access management monitoring
+    if access_manager:
+        await access_manager.stop_monitoring()
+        logger.info("Access management monitoring stopped")
+
     _cleanup_sandbox()
     logger.info("Phixr shutdown complete")
 
@@ -165,14 +197,26 @@ async def shutdown_event():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return JSONResponse(
-        status_code=200,
-        content={
-            "status": "healthy",
-            "version": "0.1.0",
-            "gitlab_url": settings.gitlab_url
-        }
-    )
+    health_data = {
+        "status": "healthy",
+        "version": "0.1.0",
+        "gitlab_url": settings.gitlab_url,
+        "access_management": None
+    }
+
+    # Check access management health
+    if access_manager:
+        try:
+            access_health = await access_manager.health_check()
+            health_data["access_management"] = access_health
+            if not access_health.get("healthy", False):
+                health_data["status"] = "degraded"
+        except Exception as e:
+            logger.warning(f"Error checking access management health: {e}")
+            health_data["access_management"] = {"healthy": False, "error": str(e)}
+            health_data["status"] = "degraded"
+
+    return JSONResponse(status_code=200, content=health_data)
 
 
 @app.get("/info")
@@ -186,7 +230,7 @@ async def app_info():
         "bot_username": settings.bot_username,
         "gitlab_url": settings.gitlab_url,
         "phase2": {
-            "enabled": opencode_bridge is not None,
+            "enabled": opencode_integration is not None,
             "sandbox_configured": sandbox_config is not None,
         }
     }
@@ -199,12 +243,12 @@ async def app_info():
 
 def _require_sandbox():
     """Helper to require sandbox to be initialized."""
-    if not opencode_bridge:
+    if not opencode_integration:
         raise HTTPException(
             status_code=503,
             detail="Sandbox not available. Check Phase 2 configuration."
         )
-    return opencode_bridge
+    return opencode_integration
 
 
 @app.post("/api/v1/sessions/start")
@@ -321,11 +365,11 @@ async def sandbox_health():
             status_code=503,
             content={"status": "unavailable", "reason": "Sandbox not configured"}
         )
-    
+
     sessions = []
-    if opencode_bridge:
-        sessions = opencode_bridge.list_sessions()
-    
+    if opencode_integration:
+        sessions = await opencode_integration.list_sessions()
+
     return JSONResponse(status_code=200, content={
         "status": "healthy",
         "image": sandbox_config.opencode_image,
@@ -382,14 +426,32 @@ async def get_vibe_room(request: Request, room_id: str):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Generate OpenCode URL for embedding
-    opencode_url = f"{opencode_integration.config.opencode_server_url}"
+    # Generate OpenCode URL for embedding - use session slug for web UI
+    # We need to get the session details to get the slug
+    try:
+        session_data = await opencode_integration.client.get_session_details(session.container_id)
+        if session_data:
+            session_slug = session_data.get("slug")
+            if session_slug:
+                opencode_url = f"{opencode_integration.config.opencode_server_url}/s/{session_slug}"
+                logger.info(f"Loading OpenCode session: {session_slug}")
+            else:
+                logger.warning(f"No slug found for session {session.container_id}")
+                opencode_url = f"{opencode_integration.config.opencode_server_url}"
+        else:
+            logger.warning(f"Session {session.container_id} not found")
+            opencode_url = f"{opencode_integration.config.opencode_server_url}"
+    except Exception as e:
+        logger.warning(f"Could not get session details: {e}")
+        opencode_url = f"{opencode_integration.config.opencode_server_url}"
 
     return templates.TemplateResponse("vibe_room.html", {
         "request": request,
         "room": room,
         "session": session,
-        "opencode_url": opencode_url
+        "opencode_url": opencode_url,
+        "participant_count": len(room.participants),
+        "message_count": len(room.messages)
     })
 
 
@@ -428,6 +490,53 @@ async def add_vibe_message(room_id: str, message: str, user_id: str = "anonymous
     )
 
     return JSONResponse(status_code=200, content={"message": msg.model_dump()})
+
+
+@app.post("/vibe/{room_id}/closeout")
+async def close_out_vibe_room(room_id: str):
+    """Close out a vibe room session with commit and push."""
+    if not opencode_integration:
+        raise HTTPException(status_code=503, detail="OpenCode integration not available")
+
+    try:
+        room = opencode_integration.get_vibe_room(room_id)
+        if not room:
+            raise HTTPException(status_code=404, detail="Vibe room not found")
+
+        session = opencode_integration.sessions.get(room.session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        logger.info(f"Closing out vibe room {room_id} for session {session.id}")
+
+        # Post status to GitLab issue
+        if hasattr(session, 'issue_id') and hasattr(session, 'project_id'):
+            comment = f"""
+🤖 **Vibe Room Close Out**
+
+Session `{session.id}` has been closed out. 
+Committing all changes and pushing to branch `{getattr(session, 'branch', 'main')}`...
+"""
+            _gitlab_client.add_issue_comment(session.project_id, session.issue_id, comment)
+
+        # Use enhanced cleanup with commit and push
+        commit_message = f"AI implementation for issue #{getattr(session, 'issue_id', 'unknown')} via vibe room closeout"
+        success = await opencode_integration.cleanup_session(session.id, commit_message)
+
+        if success:
+            return JSONResponse(status_code=200, content={
+                "status": "success",
+                "message": "Session closed out and cleaned up successfully"
+            })
+        else:
+            return JSONResponse(status_code=500, content={
+                "status": "error",
+                "message": "Failed to cleanup session"
+            })
+
+    except Exception as e:
+        logger.error(f"Error closing out vibe room {room_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/v1/vibe/rooms")

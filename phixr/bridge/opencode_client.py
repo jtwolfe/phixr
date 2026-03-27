@@ -42,9 +42,9 @@ class OpenCodeServerClient:
     
     async def health_check(self) -> bool:
         """Check if OpenCode server is healthy.
-        
+
         Returns:
-            True if server is reachable and healthy, False otherwise
+            True if server is responding, False otherwise
         """
         try:
             response = await self.client.get(f"{self.server_url}/global/health")
@@ -52,8 +52,27 @@ class OpenCodeServerClient:
             data = response.json()
             return data.get("healthy", False)
         except Exception as e:
-            logger.warning(f"Health check failed: {e}")
+            logger.warning(f"OpenCode health check failed: {e}")
             return False
+
+    async def get_session_details(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get detailed information about a session.
+
+        Args:
+            session_id: Session ID to retrieve
+
+        Returns:
+            Session details dictionary or None if not found
+        """
+        try:
+            response = await self.client.get(f"{self.server_url}/session/{session_id}")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            if e.response and e.response.status_code == 404:
+                return None
+            logger.error(f"Failed to get session details: {e}")
+            raise
     
     async def create_session(self, project_path: str, 
                            title: Optional[str] = None,
@@ -143,13 +162,13 @@ class OpenCodeServerClient:
             OpenCodeServerError: If request fails
         """
         payload = {
-            "parts": [{"type": "text", "content": message}]
+            "parts": [{"type": "text", "text": message}]
         }
         if model:
             payload["model"] = model
         if agent:
             payload["agent"] = agent
-        
+
         try:
             logger.debug(f"Sending message to session {session_id}: {message[:100]}...")
             response = await self.client.post(

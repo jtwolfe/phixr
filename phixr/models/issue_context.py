@@ -29,6 +29,8 @@ class IssueContext(BaseModel):
     repo_name: str = Field(default="", description="Repository name/slug")
     language: str = Field(default="", description="Primary programming language")
     structure: Dict[str, str] = Field(default_factory=dict, description="Repository structure")
+    branch: str = Field(default="main", description="Branch to work on")
+    should_create_mr: bool = Field(default=True, description="Whether to create an MR after completion")
     
     class Config:
         arbitrary_types_allowed = True
