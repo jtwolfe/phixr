@@ -4,53 +4,40 @@
 
 # Phixr
 
-**Hybrid Git-Integrated Collaborative AI Coding Platform**
+**Hybrid Git-Integrated AI Coding Platform**
 
-Phixr is an **open-core, self-hosted hybrid AI coding agent** that bridges the structured world of GitLab / GitHub / Gitea issues/epics with real-time collaborative "vibe coding" sessions.
+Phixr bridges **GitLab's familiar workflow** with **OpenCode's excellent web UI**. Users interact with AI through natural language comments (`@phixr make a plan...`) while leveraging OpenCode's clean, fast interface for actual coding.
 
-It lives natively inside your VCS web UI while offering a browser-based collaborative environment where you and an AI pair-program together, then ship polished merge requests with full session history preserved as Git artifacts.
+**Two Modes:**
+- **Independent Mode**: Comment-driven automation (AI works like a professional colleague)
+- **Vibe Mode**: Shared web interface for collaborative viewing
+
+See [docs/PROJECT_GOALS.md](docs/PROJECT_GOALS.md) for complete project vision and requirements.
 
 ---
 
-## 🚀 Features
+## 🚀 Key Features
 
-- **Zero-Friction Adoption** - Works directly from GitLab/GitHub issues you already use
-- **Real-Time Collaboration** - Multi-user "vibe room" for mob programming with AI
-- **Privacy First** - Fully self-hosted, local models, no data sent to third parties
-- **Open-Core** - Free core features with optional paid org tier
-- **Git-Native** - Full integration with your VCS (issues, MRs, epics, etc.)
+- **Natural Language GitLab Integration** - `@phixr` commands in issues and comments
+- **OpenCode WebUI Preservation** - Uses OpenCode's clean, fast interface
+- **Two Operating Modes** - Independent (automated) and Vibe (collaborative)
+- **Smart Git Operations** - Automatic branch creation, commits, and MRs
+- **GitLab Web IDE Experience** - Branch-specific development environments
+- **Enterprise Ready** - Designed for external model management
 
 ---
 
 ## 📋 Current Status
 
-**Phase 1: Bot Infrastructure ✅ COMPLETE**
+**✅ Core Infrastructure Complete:**
+- Webhook handling and natural language command parsing
+- OpenCode session management with robust error handling
+- Vibe room framework for shared visibility
+- Git operations and branch management
 
-The bot layer is fully operational:
-- ✅ Bot user created and configured in GitLab
-- ✅ Slash commands working (`/ai-help`, `/ai-status`, `/ai-acknowledge`)
-- ✅ Issue context extraction functional
-- ✅ Webhook receiver ready
-- ✅ Full test coverage with working examples
+**Current Focus:** Implementing the two-mode architecture (Independent + Vibe) as defined in [docs/PROJECT_GOALS.md](docs/PROJECT_GOALS.md).
 
-**Phase 2: OpenCode Integration** ⚠️ PARTIALLY IMPLEMENTED
-
-Phase 2 implementation includes:
-- ✅ **Working components**: ContextInjector, VibeRoomManager, Models, Configuration
-- ⚠️ **Foundation ready**: Multi-user collaboration framework, session models
-- ❌ **Integration layer broken**: OpenCodeBridge has async/sync issues (see below)
-
-**⚠️ CRITICAL**: The integration layer (OpenCodeBridge) has async/sync mismatches and won't work with a real OpenCode server yet. See [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md) for details.
-
-**Phase 2 Components Status**:
-- ✅ ContextInjector - Production-ready
-- ✅ VibeRoomManager - Production-ready for MVP
-- ✅ Execution Models - Production-ready
-- ✅ SandboxConfig - Production-ready
-- ❌ OpenCodeBridge - NOT WORKING (async/sync mismatch)
-- ⚠️ OpenCodeServerClient - Untested with real server
-
-See [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md) for comprehensive status and [docs/README.md](./docs/README.md) for documentation guide.
+**Documentation:** All project documentation has been consolidated in the `docs/` directory for cleanliness. Only `README.md` remains in the project root.
 
 ---
 
@@ -61,8 +48,7 @@ See [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md) for comprehensive sta
 - Python 3.11+
 - Docker (optional, for containerized deployment)
 
-### Setup (5 minutes)
-
+### Quick Setup
 1. **Clone and install**
    ```bash
    cd phixr
@@ -71,130 +57,74 @@ See [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md) for comprehensive sta
    pip install -r requirements.txt
    ```
 
-2. **Generate bot credentials**
+2. **Configure and start**
    ```bash
-   python scripts/setup_bot_user.py --gitlab-url http://localhost:8080
-   # Paste your root PAT token when prompted
-   ```
-
-3. **Start the bot**
-   ```bash
+   cp .env.local.example .env.local
+   # Edit .env.local with your GitLab credentials
    python -m phixr.main
    ```
 
-4. **Test it**
+3. **Test it**
    - Create an issue in GitLab
-   - Assign `phixr-bot` user
-   - Comment: `/ai-help`
-   - Bot responds with available commands!
+   - Comment: `@phixr help` or `/ai-help`
+   - Bot should respond with available commands
 
-For detailed setup, see [GETTING_STARTED.md](./GETTING_STARTED.md).
+For detailed setup and configuration, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
 ---
 
 ## 📚 Documentation
 
-### Phase 1
-- **[PHASE_1_SUMMARY.md](./PHASE_1_SUMMARY.md)** - Phase 1 complete implementation summary
+**All documentation is in the `docs/` directory:**
 
-### Phase 2
-- **[PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md)** - **REQUIRED READING** - Honest status assessment
-- **[PHASE_2_DEV_QUICK_REF.md](./PHASE_2_DEV_QUICK_REF.md)** - Developer quick reference guide
-- **[docs/README.md](./docs/README.md)** - Phase 2 documentation hub
-- **[PHASE_2_IMPLEMENTATION.md](./PHASE_2_IMPLEMENTATION.md)** - Architecture overview
+### Core Documentation
+- **[docs/PROJECT_GOALS.md](docs/PROJECT_GOALS.md)** - Current project vision and requirements
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical architecture
+- **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** - Installation and setup
+- **[docs/README.md](docs/README.md)** - Documentation index
 
-### General
-- **[DESIGN.md](./DESIGN.md)** - Complete high-level design document
-- **[GETTING_STARTED.md](./GETTING_STARTED.md)** - Setup instructions
-- **[DEPLOYMENT_STATUS.md](./DEPLOYMENT_STATUS.md)** - Current deployment status
-- **[docs/QUICKSTART.md](./docs/QUICKSTART.md)** - Quick reference guide
+### Supporting Documentation
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - Quick start guide
+- **[docs/GITLAB_MANUAL_SETUP.md](docs/GITLAB_MANUAL_SETUP.md)** - GitLab setup
+- **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Testing procedures
 
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────┐
-│      GitLab / GitHub / Gitea            │
-│  (Issues, Comments, Events)             │
-└──────────────┬──────────────────────────┘
-               │ webhooks
-               ▼
-┌─────────────────────────────────────────┐
-│      Phixr Bot Service                  │
-│  ┌─────────────────────────────────────┐│
-│  │ • Webhook Receiver                  ││
-│  │ • Command Parser (/ai-*)            ││
-│  │ • Context Extractor                 ││
-│  │ • Assignment Tracker                ││
-│  └─────────────────────────────────────┘│
-└──────────────┬──────────────────────────┘
-               │ API calls
-       ┌───────┴────────┐
-       ▼                ▼
-    Redis          PostgreSQL
-  (sessions)      (persistence)
-```
+**Historical documents** are archived in `docs/archive/` to maintain a clean repository structure.
 
 ---
 
-## 🛠️ Project Structure
+## 🏗️ Project Status
 
-```
-phixr/
-├── assets/
-│   └── phixr.jpg               # Logo
-├── phixr/
-│   ├── main.py                 # FastAPI application
-│   ├── config/                 # Settings and configuration
-│   ├── models/                 # Data models
-│   ├── webhooks/               # GitLab webhook handlers
-│   ├── handlers/               # Command handlers
-│   ├── commands/               # Slash command parser
-│   ├── context/                # Issue context extraction
-│   ├── adapters/               # OpenCode integration (Phase 2)
-│   ├── bridge/                 # Container lifecycle (Phase 2)
-│   └── utils/                  # GitLab client, logging
-├── scripts/
-│   └── setup_bot_user.py       # Bot user creation script
-├── docker/
-│   └── Dockerfile              # Application container
-├── docs/                       # Documentation
-├── docker-compose.yml          # Local dev environment
-├── requirements.txt            # Python dependencies
-├── DESIGN.md                   # High-level design
-├── PHASE_1_PLAN.md            # Phase 1 details
-├── PHASE_1_SUMMARY.md         # Phase 1 summary
-├── DEPLOYMENT_STATUS.md        # Current status
-└── GETTING_STARTED.md         # Setup guide
-```
+**What's Working:**
+- ✅ GitLab webhook handling and command parsing
+- ✅ OpenCode session creation and management
+- ✅ Vibe room framework
+- ✅ Basic Git operations and branch management
+- ✅ Documentation reorganization and cleanup
+
+**Current Development Focus:**
+- Two-mode system implementation (Independent + Vibe)
+- Reliable OpenCode integration (addressing API limitations)
+- Natural language command processing improvements
+- Professional Git workflow automation
+
+**See [docs/PROJECT_GOALS.md](docs/PROJECT_GOALS.md) for detailed requirements and success criteria.**
 
 ---
 
-## 🎮 Try the Bot
+## 🤝 Contributing
 
-### What the Bot Can Do (Phase 1)
+1. Review [docs/PROJECT_GOALS.md](docs/PROJECT_GOALS.md) to understand the vision
+2. Check [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical approach
+3. See [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md) for development practices
+4. All documentation changes should maintain the clean structure (only README.md in root)
 
-```
-User:    /ai-help
-Bot:     📚 **Available Commands:**
-         - `/ai-status` - Show issue status and context
-         - `/ai-help` - List available commands
-         - `/ai-acknowledge` - Confirm bot is ready
+---
 
-User:    /ai-status
-Bot:     ✅ **Bot Status:** Ready
-         **Issue Context:**
-         - Title: [issue title]
-         - Author: [user]
-         - Comments: [count]
-
-User:    /ai-acknowledge
-Bot:     👋 I'm ready to assist with this issue!
-```
-
-### What's Coming (Phase 2+)
-
+<div align="center">
+  <strong>Built with ❤️ for collaborative coding</strong>
+  <br />
+  <a href="https://opencode.ai">OpenCode</a> • GitLab Integration • AI Agents
+</div>
 ⚠️ **NOTE**: These features are defined but the OpenCode integration layer needs fixes before they work.
 
 **Intended Features** (when integration is fixed):
@@ -205,7 +135,7 @@ Bot:     👋 I'm ready to assist with this issue!
 - Vibe room - Browser-based collaborative environment
 - Web terminal - Access OpenCode via browser
 
-**See**: [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md) for status and fix requirements
+**See**: [docs/PROJECT_GOALS.md](docs/PROJECT_GOALS.md) for current requirements and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical design
 
 ---
 
@@ -238,38 +168,41 @@ Ready for Kubernetes deployment - Helm charts coming in future phases.
 
 ## 🤝 Contributing
 
-The project is structured for incremental development. Each phase has clear deliverables:
+## 📚 Documentation
 
-- **Phase 1** ✅ - Bot infrastructure & commands (COMPLETE)
-- **Phase 2** ⚠️ - OpenCode integration & sandbox (PARTIALLY IMPLEMENTED - has issues)
-- **Phase 3** - Multi-user vibe room & real-time collaboration
-- **Phase 4** - Analytics & team dashboard
+**All project documentation is now consolidated in the `docs/` directory:**
 
-**⚠️ Phase 2 Status**: The OpenCode integration layer has critical issues. See [PHASE_2_STATUS_HONEST.md](./PHASE_2_STATUS_HONEST.md).
+### Core Documentation
+- **[docs/PROJECT_GOALS.md](docs/PROJECT_GOALS.md)** - Current project vision and requirements (primary reference)
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical architecture and implementation details
+- **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** - Installation and setup guide
 
-Want to contribute? See [PHASE_1_PLAN.md](./PHASE_1_PLAN.md) for implementation details.
+### Supporting Documentation
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - Quick start guide
+- **[docs/GITLAB_MANUAL_SETUP.md](docs/GITLAB_MANUAL_SETUP.md)** - GitLab environment setup
+- **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Testing procedures and guidelines
+- **[docs/README.md](docs/README.md)** - Documentation index and navigation
+
+**Historical documents** have been archived in `docs/archive/` to maintain a clean repository structure. See [docs/archive/README.md](docs/archive/README.md) for details on archived content.
 
 ---
 
 ## 📝 License
 
-Coming soon.
+MIT License - see LICENSE file for details.
 
 ---
 
 ## 🙋 Questions?
 
-- 📖 Check the [docs/](./docs/) folder
-- 🤖 Review [DESIGN.md](./DESIGN.md) for architecture
-- 🚀 See [GETTING_STARTED.md](./GETTING_STARTED.md) for setup
-- 📊 Current status in [DEPLOYMENT_STATUS.md](./DEPLOYMENT_STATUS.md)
+- 📖 Check the documentation above
+- 🤖 Review [docs/PROJECT_GOALS.md](docs/PROJECT_GOALS.md) for current direction
+- 🛠️ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical details
 
 ---
 
 <div align="center">
   <strong>Built with ❤️ for collaborative coding</strong>
   <br />
-  <a href="https://github.com/anomalyco/opencode">OpenCode</a> • 
-  <a href="https://github.com/sweep-ai/sweep">Sweep</a> • 
-  <a href="https://github.com/paul-gauthier/aider">Aider</a>
+  <a href="https://opencode.ai">OpenCode</a> • GitLab Integration • AI Agents
 </div>
