@@ -1,579 +1,578 @@
-"""OpenCode Integration Service.
+"""OpenCode integration service — orchestrates sessions between GitLab and OpenCode.
 
-Clean rearchitecture of OpenCode integration that supports both API-based and UI embedding modes.
-Replaces the problematic OpenCodeBridge with proper async architecture.
+This is the main coordination layer. It:
+- Creates OpenCode sessions with GitLab issue context
+- Sends prompts to OpenCode via the async API
+- Monitors sessions via SSE events (completion, errors, permissions)
+- Reports results back to GitLab as issue comments
+- Manages vibe rooms for shared visibility
 """
 
 import asyncio
 import logging
-from enum import Enum
-from typing import Optional, Dict, Any, List, AsyncGenerator
 from datetime import datetime
+from typing import Dict, List, Optional
 
-from phixr.bridge.context_injector import ContextInjector
 from phixr.bridge.opencode_client import OpenCodeServerClient, OpenCodeServerError
 from phixr.collaboration.vibe_room_manager import VibeRoomManager
 from phixr.config.sandbox_config import SandboxConfig
 from phixr.models.execution_models import (
-    Session, SessionStatus, ExecutionResult, ExecutionMode, VibeRoom, ExecutionConfig
+    ExecutionMode, Session, SessionStatus, VibeRoom,
 )
 from phixr.models.issue_context import IssueContext
 
 logger = logging.getLogger(__name__)
 
 
-class IntegrationMode(str, Enum):
-    """Integration modes for OpenCode."""
-    API = "api"         # Use OpenCode API only
-    UI_EMBED = "ui_embed"  # Embed OpenCode web UI in iframe
-    HYBRID = "hybrid"   # API + UI embedding
-
-
 class OpenCodeIntegrationService:
-    """Clean, async integration service for OpenCode.
+    """Orchestrates OpenCode sessions for GitLab issue automation.
 
-    Supports multiple integration modes:
-    - API: Pure API-based interaction
-    - UI_EMBED: Embed OpenCode web UI in iframe
-    - HYBRID: Combined approach
-
-    Replaces the problematic OpenCodeBridge with proper architecture.
+    Thin layer that translates between Phixr's domain (GitLab issues,
+    commands, vibe rooms) and OpenCode's HTTP API (sessions, prompts, events).
     """
 
-    def __init__(self, config: SandboxConfig, mode: IntegrationMode = IntegrationMode.UI_EMBED,
-                 gitlab_token: Optional[str] = None, access_manager: Optional[Any] = None,
-                 base_url: str = "http://localhost:8000"):
-        """Initialize integration service.
+    def __init__(self, config: SandboxConfig, base_url: str = "http://localhost:8000"):
+        """Initialize the integration service.
 
         Args:
-            config: Sandbox configuration
-            mode: Integration mode (UI_EMBED for single user vibe coding)
-            gitlab_token: GitLab bot token for repository cloning
-            access_manager: Access management service
-            base_url: Base URL for vibe room links
+            config: Sandbox configuration with OpenCode server URL etc.
+            base_url: Phixr's own public URL (for vibe room links).
         """
         self.config = config
-        self.mode = mode
-        self.gitlab_token = gitlab_token
-        self.access_manager = access_manager
-        self.base_url = base_url
-        self.client = OpenCodeServerClient(self.config.opencode_server_url)
-        self.context_injector = ContextInjector(config)
+        self.client = OpenCodeServerClient(config.opencode_server_url)
         self.vibe_manager = VibeRoomManager()
+        self.base_url = base_url
 
-        # Session tracking
+        # Track sessions: phixr_session_id -> Session model
         self.sessions: Dict[str, Session] = {}
+        # Map phixr session IDs to OpenCode session IDs
+        self.opencode_session_ids: Dict[str, str] = {}
 
-        logger.info(f"OpenCode integration service initialized (mode: {mode.value})")
+    # ── Health ───────────────────────────────────────────────────────────
 
     async def health_check(self) -> bool:
-        """Check if OpenCode server is healthy."""
-        try:
-            return await self.client.health_check()
-        except Exception as e:
-            logger.warning(f"OpenCode health check failed: {e}")
-            return False
+        """Check if the OpenCode server is reachable."""
+        return await self.client.health_check()
+
+    # ── Session Lifecycle ────────────────────────────────────────────────
 
     async def create_session(
         self,
         context: IssueContext,
         execution_mode: ExecutionMode = ExecutionMode.BUILD,
-        timeout_minutes: Optional[int] = None,
-        owner_id: str = "single-user"
+        timeout_minutes: int = 30,
+        owner_id: str = "system",
     ) -> Session:
-        """Create a new OpenCode session with proper async handling.
+        """Create an OpenCode session and send the initial prompt.
+
+        1. Creates a session on the OpenCode server
+        2. Sends the issue context as an async prompt
+        3. Creates a vibe room for shared visibility
+        4. Returns a Phixr Session object for tracking
 
         Args:
-            context: Issue context from GitLab
-            execution_mode: Execution mode (BUILD, PLAN, etc.)
+            context: GitLab issue context
+            execution_mode: PLAN, BUILD, or REVIEW
             timeout_minutes: Session timeout
-            owner_id: User ID for session ownership
-
-        Returns:
-            Created Session object
-
-        Raises:
-            OpenCodeServerError: If session creation fails
+            owner_id: Who initiated this (GitLab username or "system")
         """
-        session_id = f"sess-{context.issue_id}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+        # Create session on OpenCode
+        title = f"[{execution_mode.value}] {context.title} (issue #{context.issue_id})"
+        oc_session = await self.client.create_session(title=title)
+        oc_session_id = oc_session["id"]
 
-        # Create Phixr session object
+        # Build Phixr session
+        session_id = f"sess-{context.issue_id}-{int(datetime.utcnow().timestamp())}"
         session = Session(
             id=session_id,
             issue_id=context.issue_id,
             repo_url=context.repo_url,
-            branch=f"ai-work/issue-{context.issue_id}",
-            status=SessionStatus.INITIALIZING,
+            branch=context.branch or f"ai-work/issue-{context.issue_id}",
+            status=SessionStatus.RUNNING,
             mode=execution_mode,
-            timeout_minutes=timeout_minutes or self.config.timeout_minutes,
-            model=self.config.model,
-            temperature=self.config.model_temperature,
-            allow_destructive=self.config.allow_destructive_operations,
+            timeout_minutes=timeout_minutes,
+            started_at=datetime.utcnow(),
+            container_id=oc_session_id,  # Store OpenCode session ID here
         )
 
-        session.started_at = datetime.utcnow()
         self.sessions[session_id] = session
+        self.opencode_session_ids[session_id] = oc_session_id
 
-        logger.info(f"Creating OpenCode session: {session_id} (mode: {execution_mode.value})")
+        # Send initial prompt with context
+        agent = "plan" if execution_mode == ExecutionMode.PLAN else "build"
+        prompt = self._build_prompt(context, execution_mode)
+        system_instructions = self._build_system_instructions(context, execution_mode)
+
+        await self.client.send_prompt(
+            session_id=oc_session_id,
+            message=prompt,
+            agent=agent,
+            system=system_instructions,
+        )
+
+        # Create vibe room
+        try:
+            self.vibe_manager.create_room(
+                session=session,
+                owner_id=owner_id,
+                room_name=f"Issue #{context.issue_id}: {context.title[:50]}",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to create vibe room: {e}")
+
+        logger.info(
+            f"Session {session_id} created (opencode={oc_session_id}, "
+            f"mode={execution_mode.value}, agent={agent})"
+        )
+        return session
+
+    async def monitor_session(
+        self,
+        session_id: str,
+        gitlab_client,
+        project_id: int,
+        issue_id: int,
+    ) -> None:
+        """Monitor an OpenCode session via SSE until completion.
+
+        Subscribes to the event stream, auto-approves permissions,
+        and posts results back to GitLab when done.
+
+        This runs as a background asyncio task — it blocks until the
+        session completes, errors, or times out.
+        """
+        session = self.sessions.get(session_id)
+        if not session:
+            logger.error(f"Cannot monitor unknown session: {session_id}")
+            return
+
+        oc_session_id = self.opencode_session_ids.get(session_id)
+        if not oc_session_id:
+            logger.error(f"No OpenCode session ID for: {session_id}")
+            return
+
+        timeout = session.timeout_minutes * 60
+        mode_label = session.mode if isinstance(session.mode, str) else session.mode
 
         try:
-            if self.mode in [IntegrationMode.UI_EMBED, IntegrationMode.HYBRID]:
-                # For UI embedding mode, create a session that will be managed via UI
-                opencode_session = await self.client.create_session(
-                    project_path=context.repo_url,  # This will be handled differently in UI mode
-                    title=f"Issue {context.issue_id}: {context.title}"
-                )
+            await asyncio.wait_for(
+                self._monitor_events(oc_session_id, session_id),
+                timeout=timeout,
+            )
 
-                # Store OpenCode session ID
-                session.container_id = opencode_session.get("id", "")
+            # Session completed — extract and post results
+            session.status = SessionStatus.COMPLETED
+            session.ended_at = datetime.utcnow()
+            await self._post_results_to_gitlab(
+                gitlab_client, project_id, issue_id, session, mode_label
+            )
 
-                # Build and inject context message (CRITICAL: without this, OpenCode has no context!)
-                context_message = self.context_injector.build_context_message(
-                    context,
-                    ExecutionConfig(
-                        session_id=session_id,
-                        issue_id=context.issue_id,
-                        repo_url=context.repo_url,
-                        branch=session.branch,
-                        mode=execution_mode
-                    )
-                )
+        except asyncio.TimeoutError:
+            logger.warning(f"Session {session_id} timed out after {timeout}s")
+            session.status = SessionStatus.TIMEOUT
+            session.ended_at = datetime.utcnow()
 
-                # Send initial message with context to UI session
-                try:
-                    await self.client.send_message(
-                        session_id=session.container_id,
-                        message=context_message,
-                        model=session.model
-                    )
-                    logger.info(f"Sent context message to UI session: {session.container_id}")
-                except Exception as e:
-                    logger.warning(f"Failed to send context message to UI session {session.container_id}: {e}")
-                    # Continue anyway - UI mode can still work without initial message
+            # Try to abort the OpenCode session
+            try:
+                await self.client.abort_session(oc_session_id)
+            except Exception:
+                pass
 
-                # Create vibe room for UI embedding
-                vibe_room = self.vibe_manager.create_room(session, owner_id)
-                session.vibe_room_id = vibe_room.id
-
-                logger.info(f"Created UI-embedded session: {session_id} (opencode: {session.container_id}, vibe: {vibe_room.id})")
-
-            elif self.mode == IntegrationMode.API:
-                # Pure API mode - create session and inject context immediately
-                opencode_session = await self.client.create_session(
-                    project_path=context.repo_url,
-                    title=f"Issue {context.issue_id}: {context.title}"
-                )
-
-                session.container_id = opencode_session.get("id", "")
-
-                # Build and inject context message
-                context_message = self.context_injector.build_context_message(
-                    context,
-                    ExecutionConfig(
-                        session_id=session_id,
-                        issue_id=context.issue_id,
-                        repo_url=context.repo_url,
-                        branch=session.branch,
-                        mode=execution_mode
-                    )
-                )
-
-                # Send initial message with context
-                await self.client.send_message(
-                    session_id=session.container_id,
-                    message=context_message,
-                    model=session.model
-                )
-
-                logger.info(f"Created API session: {session_id} (opencode: {session.container_id})")
-
-            session.status = SessionStatus.RUNNING
-            return session
+            self._post_comment(
+                gitlab_client, project_id, issue_id,
+                f"⏰ **Session Timed Out**\n\n"
+                f"Session `{session_id}` exceeded the {session.timeout_minutes} minute limit.\n"
+                f"The session has been aborted. You can retry with `/ai-{mode_label}`."
+            )
 
         except Exception as e:
+            logger.error(f"Error monitoring session {session_id}: {e}", exc_info=True)
             session.status = SessionStatus.ERROR
-            session.errors.append(str(e))
             session.ended_at = datetime.utcnow()
-            logger.error(f"Failed to create session {session_id}: {e}")
+            session.errors.append(str(e))
+
+            self._post_comment(
+                gitlab_client, project_id, issue_id,
+                f"❌ **Session Error**\n\n"
+                f"Session `{session_id}` encountered an error:\n```\n{str(e)[:500]}\n```"
+            )
+
+    async def _monitor_events(self, oc_session_id: str, phixr_session_id: str) -> None:
+        """Internal event loop: watch SSE stream until the target session goes idle."""
+        # Give the prompt a moment to start processing
+        await asyncio.sleep(1)
+
+        try:
+            async for event in self.client.subscribe_events():
+                event_type = event.get("type", "")
+
+                # Filter to events for our session
+                properties = event.get("properties", event)
+                event_session_id = properties.get("sessionID", "")
+
+                if event_session_id and event_session_id != oc_session_id:
+                    continue
+
+                # Auto-approve permissions
+                if event_type == "permission.asked":
+                    perm_id = properties.get("id")
+                    if perm_id:
+                        logger.info(
+                            f"Auto-approving permission {perm_id} "
+                            f"({properties.get('permission', '?')})"
+                        )
+                        await self.client.reply_permission(perm_id, "always")
+                    continue
+
+                # Auto-answer questions (select first option for each)
+                if event_type == "question.asked":
+                    q_id = properties.get("id")
+                    if q_id:
+                        questions = properties.get("questions", [])
+                        answers = []
+                        for q in questions:
+                            options = q.get("options", [])
+                            # Pick first option label as the answer
+                            first = options[0]["label"] if options else "yes"
+                            answers.append([first])
+                            logger.info(
+                                f"Auto-answering question {q_id}: "
+                                f"{q.get('question', '?')[:80]} → {first}"
+                            )
+                        await self.client.reply_question(q_id, answers)
+                    continue
+
+                # Session error
+                if event_type == "session.error":
+                    error_msg = properties.get("error", "Unknown error")
+                    logger.error(f"Session error for {oc_session_id}: {error_msg}")
+                    session = self.sessions.get(phixr_session_id)
+                    if session:
+                        session.errors.append(str(error_msg))
+                    raise OpenCodeServerError(f"OpenCode session error: {error_msg}")
+
+                # Check if session went idle (meaning prompt processing finished)
+                # Only check on events that belong to our session
+                if event_type in ("session.updated", "session.status", "message.updated") and (
+                    event_session_id == oc_session_id or not event_session_id
+                ):
+                    try:
+                        statuses = await self.client.get_session_status()
+                        # OpenCode returns {} when all sessions are idle,
+                        # or {id: {type: "busy"|"retry"}} for active sessions.
+                        # Session is idle when it's NOT in the status dict.
+                        if oc_session_id not in statuses:
+                            logger.info(f"Session {oc_session_id} is idle — processing complete")
+                            return
+                        status_info = statuses.get(oc_session_id, {})
+                        if status_info.get("type") == "idle":
+                            logger.info(f"Session {oc_session_id} is idle — processing complete")
+                            return
+                    except Exception as e:
+                        logger.debug(f"Status check failed: {e}")
+
+                # Log tool activity
+                if event_type == "message.part.updated":
+                    part = properties.get("part", {})
+                    if part.get("type") == "tool":
+                        state = part.get("state", {})
+                        tool_name = part.get("tool", "?")
+                        status = state.get("status", "?")
+                        if status == "running":
+                            title = state.get("title", "")
+                            logger.info(f"  Tool: {tool_name} — {title}")
+                        elif status == "completed":
+                            logger.debug(f"  Tool: {tool_name} — completed")
+
+        except OpenCodeServerError:
             raise
+        except Exception as e:
+            # If SSE dies, fall back to polling
+            logger.warning(f"SSE stream lost, falling back to polling: {e}")
+            await self._poll_until_idle(oc_session_id)
+
+    async def _poll_until_idle(self, oc_session_id: str) -> None:
+        """Fallback: poll session status until idle."""
+        while True:
+            await asyncio.sleep(5)
+            try:
+                # Auto-approve permissions and answer questions while polling
+                try:
+                    pending = await self.client.list_permissions()
+                    for perm in pending:
+                        if perm.get("sessionID") == oc_session_id:
+                            await self.client.reply_permission(perm["id"], "always")
+                except Exception:
+                    pass
+                try:
+                    questions = await self.client.list_questions()
+                    for q in questions:
+                        if q.get("sessionID") == oc_session_id:
+                            qs = q.get("questions", [])
+                            answers = [[opts[0]["label"]] if (opts := qn.get("options", [])) else ["yes"] for qn in qs]
+                            await self.client.reply_question(q["id"], answers)
+                except Exception:
+                    pass
+
+                statuses = await self.client.get_session_status()
+                # Session is idle when NOT in status dict, or type is "idle"
+                if oc_session_id not in statuses:
+                    logger.info(f"Session {oc_session_id} is idle (polled)")
+                    return
+                status_info = statuses.get(oc_session_id, {})
+                status_type = status_info.get("type", "idle")
+                if status_type == "idle":
+                    logger.info(f"Session {oc_session_id} is idle (polled)")
+                    return
+                elif status_type == "retry":
+                    logger.warning(
+                        f"Session {oc_session_id} retrying: "
+                        f"{status_info.get('message', '?')}"
+                    )
+            except Exception as e:
+                logger.warning(f"Poll status check failed: {e}")
+
+    # ── GitLab Reporting ─────────────────────────────────────────────────
+
+    async def _post_results_to_gitlab(
+        self, gitlab_client, project_id: int, issue_id: int,
+        session: Session, mode_label: str,
+    ) -> None:
+        """Extract messages from completed session and post summary to GitLab."""
+        oc_session_id = self.opencode_session_ids.get(session.id)
+        if not oc_session_id:
+            return
+
+        try:
+            messages = await self.client.get_messages(oc_session_id, limit=50)
+        except Exception as e:
+            logger.error(f"Failed to get messages for results: {e}")
+            self._post_comment(
+                gitlab_client, project_id, issue_id,
+                f"✅ **Session Complete** (`{session.id}`)\n\n"
+                f"The {mode_label} session finished but results could not be retrieved."
+            )
+            return
+
+        # Extract the assistant's text content from messages
+        result_text = self._extract_assistant_text(messages)
+
+        if mode_label == "plan":
+            comment = (
+                f"📋 **Implementation Plan Ready**\n\n"
+                f"**Session:** `{session.id}`\n\n"
+                f"---\n\n{result_text[:15000]}"
+            )
+        else:
+            # Get diff summary if available
+            diff_summary = await self._get_diff_summary(oc_session_id, messages)
+            comment = (
+                f"✅ **{mode_label.title()} Complete**\n\n"
+                f"**Session:** `{session.id}`\n"
+                f"**Branch:** `{session.branch}`\n\n"
+                f"{diff_summary}"
+                f"---\n\n{result_text[:12000]}"
+            )
+
+        self._post_comment(gitlab_client, project_id, issue_id, comment)
+
+    async def _get_diff_summary(self, oc_session_id: str,
+                                messages: List[dict]) -> str:
+        """Try to get a file diff summary from the session."""
+        try:
+            for msg in reversed(messages):
+                if msg.get("info", {}).get("role") == "assistant":
+                    msg_id = msg["info"]["id"]
+                    diffs = await self.client.get_diff(oc_session_id, msg_id)
+                    if diffs:
+                        files = [d.get("path", "?") for d in diffs]
+                        additions = sum(d.get("additions", 0) for d in diffs)
+                        deletions = sum(d.get("deletions", 0) for d in diffs)
+                        return (
+                            f"**Files changed:** {len(files)}\n"
+                            f"**Changes:** +{additions} / -{deletions}\n\n"
+                        )
+                    break
+        except Exception as e:
+            logger.debug(f"Could not get diff summary: {e}")
+        return ""
+
+    @staticmethod
+    def _extract_assistant_text(messages: List[dict]) -> str:
+        """Extract text content from the last assistant message."""
+        for msg in reversed(messages):
+            info = msg.get("info", {})
+            if info.get("role") != "assistant":
+                continue
+
+            parts = msg.get("parts", [])
+            text_parts = []
+            for part in parts:
+                if part.get("type") == "text":
+                    text = part.get("text", "")
+                    if text:
+                        text_parts.append(text)
+
+            if text_parts:
+                return "\n\n".join(text_parts)
+
+        return "_No text output from AI._"
+
+    @staticmethod
+    def _post_comment(gitlab_client, project_id: int, issue_id: int, body: str) -> None:
+        """Post a comment to a GitLab issue (sync helper)."""
+        try:
+            gitlab_client.add_issue_comment(project_id, issue_id, body)
+        except Exception as e:
+            logger.error(f"Failed to post GitLab comment: {e}")
+
+    # ── Prompt Building ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_prompt(context: IssueContext, mode: ExecutionMode) -> str:
+        """Build the user prompt from issue context."""
+        comments_text = ""
+        if context.comments:
+            comments_text = "\n\n**Recent Comments:**\n"
+            for c in context.comments[-10:]:
+                author = c.get("author", "unknown")
+                body = c.get("body", "")[:500]
+                comments_text += f"- **{author}**: {body}\n"
+
+        if mode == ExecutionMode.PLAN:
+            task = (
+                "Analyze this issue and create a detailed implementation plan.\n"
+                "Review the codebase, identify files to modify, and outline steps."
+            )
+        elif mode == ExecutionMode.REVIEW:
+            task = (
+                "Review the code changes related to this issue.\n"
+                "Check for bugs, code quality, security, and test coverage."
+            )
+        else:
+            task = (
+                "Implement the changes described in this issue.\n"
+                "Write code, create tests, and ensure everything works."
+            )
+
+        return f"""## Issue #{context.issue_id}: {context.title}
+
+**URL:** {context.url}
+**Author:** {context.author}
+**Assignees:** {', '.join(context.assignees) or 'None'}
+**Labels:** {', '.join(context.labels) or 'None'}
+
+## Description
+
+{context.description or 'No description provided.'}
+{comments_text}
+
+## Task
+
+{task}
+"""
+
+    @staticmethod
+    def _build_system_instructions(context: IssueContext, mode: ExecutionMode) -> str:
+        """Build system instructions injected via the 'system' field."""
+        instructions = [
+            "You are Phixr, an AI coding assistant integrated with GitLab.",
+            f"You are working on issue #{context.issue_id} in repository {context.repo_name or 'unknown'}.",
+            f"The target branch is: {context.branch}",
+        ]
+
+        if mode == ExecutionMode.PLAN:
+            instructions.append(
+                "You are in PLAN mode. Analyze the codebase and produce a structured "
+                "implementation plan. Do not make changes — only analyze and plan."
+            )
+        elif mode == ExecutionMode.BUILD:
+            instructions.append(
+                "You are in BUILD mode. Implement the requested changes. "
+                "Write clean, tested code. Commit your changes when done."
+            )
+        elif mode == ExecutionMode.REVIEW:
+            instructions.append(
+                "You are in REVIEW mode. Review code changes for quality, "
+                "correctness, security, and test coverage."
+            )
+
+        return "\n".join(instructions)
+
+    # ── Session Queries ──────────────────────────────────────────────────
 
     async def get_session(self, session_id: str) -> Optional[Session]:
-        """Get session by ID."""
+        """Get a Phixr session by ID."""
         return self.sessions.get(session_id)
 
-    async def list_sessions(self, status_filter: Optional[SessionStatus] = None) -> List[Session]:
-        """List sessions with optional status filter."""
+    async def list_sessions(
+        self, status_filter: Optional[SessionStatus] = None
+    ) -> List[Session]:
+        """List tracked Phixr sessions, optionally filtered by status."""
         sessions = list(self.sessions.values())
         if status_filter:
             sessions = [s for s in sessions if s.status == status_filter]
         return sessions
 
-    async def stop_session(self, session_id: str, force: bool = False) -> bool:
-        """Stop an OpenCode session."""
+    async def get_session_results(self, session_id: str) -> Optional[dict]:
+        """Get results for a completed session."""
         session = self.sessions.get(session_id)
-        if not session or not session.container_id:
-            logger.warning(f"Session not found or no OpenCode session: {session_id}")
-            return False
+        if not session:
+            return None
 
-        try:
-            await self.client.delete_session(session.container_id)
-            session.status = SessionStatus.STOPPED
-            session.ended_at = datetime.utcnow()
-            logger.info(f"Stopped session: {session_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to stop session {session_id}: {e}")
-            return False
-
-    async def get_session_results(self, session_id: str) -> Optional[ExecutionResult]:
-        """Get results from completed session."""
-        session = self.sessions.get(session_id)
-        if not session or not session.container_id:
+        oc_session_id = self.opencode_session_ids.get(session_id)
+        if not oc_session_id:
             return None
 
         try:
-            # Get diff from OpenCode
-            diff = await self.client.get_diff(session.container_id)
-
-            # Create result object
-            result = ExecutionResult(
-                session_id=session.id,
-                status=session.status,
-                exit_code=0 if session.status == SessionStatus.COMPLETED else 1,
-                output="",  # Will be populated from messages
-                success=(session.status == SessionStatus.COMPLETED),
-                files_changed=self._parse_diff_files(diff) if diff else [],
-                diffs={"unified": diff} if diff else {},
-                errors=session.errors,
-                duration_seconds=int((session.ended_at - session.started_at).total_seconds())
-                                if session.started_at and session.ended_at else 0,
-            )
-
-            return result
-
+            messages = await self.client.get_messages(oc_session_id)
+            text = self._extract_assistant_text(messages)
+            return {
+                "session_id": session_id,
+                "status": session.status,
+                "mode": session.mode,
+                "text": text,
+                "message_count": len(messages),
+            }
         except Exception as e:
-            logger.error(f"Error getting results for session {session_id}: {e}")
+            logger.error(f"Failed to get results: {e}")
             return None
 
-    async def stream_messages(self, session_id: str) -> AsyncGenerator[str, None]:
-        """Stream messages for real-time updates."""
+    async def stop_session(self, session_id: str) -> bool:
+        """Stop a running session."""
         session = self.sessions.get(session_id)
-        if not session or not session.container_id:
-            yield f"Error: Session not found or not active: {session_id}"
-            return
+        if not session:
+            return False
 
-        try:
-            # In UI_EMBED mode, messages are handled via the embedded UI
-            if self.mode in [IntegrationMode.UI_EMBED, IntegrationMode.HYBRID]:
-                # For now, just yield status updates
-                yield f"Session active: {session_id} (UI embedded mode)"
+        oc_session_id = self.opencode_session_ids.get(session_id)
+        if oc_session_id:
+            try:
+                await self.client.abort_session(oc_session_id)
+            except Exception as e:
+                logger.warning(f"Failed to abort OpenCode session: {e}")
 
-                # Could implement polling or websocket here for message updates
-                # But for MVP, the embedded UI handles this
-                return
+        session.status = SessionStatus.STOPPED
+        session.ended_at = datetime.utcnow()
+        return True
 
-            # In API mode, stream messages from OpenCode
-            messages = await self.client.get_messages(session.container_id)
-            for message in messages:
-                role = message.get("role", "unknown")
-                content = message.get("content", "")
-                yield f"[{role}] {content}\n"
-
-        except Exception as e:
-            logger.error(f"Error streaming messages for {session_id}: {e}")
-            yield f"Error: {str(e)}\n"
+    # ── Vibe Room Delegation ─────────────────────────────────────────────
 
     def get_vibe_room(self, room_id: str) -> Optional[VibeRoom]:
-        """Get vibe room by room ID (for UI embedding)."""
         return self.vibe_manager.get_room(room_id)
 
     def get_vibe_room_by_session(self, session_id: str) -> Optional[VibeRoom]:
-        """Get vibe room associated with a session."""
         return self.vibe_manager.get_room_by_session(session_id)
 
     def create_vibe_session_url(self, session_id: str) -> Optional[str]:
-        """Create URL for accessing the vibe coding session."""
-        session = self.sessions.get(session_id)
-        if not session or not session.vibe_room_id:
-            return None
+        """Generate a URL for the vibe room associated with a session."""
+        room = self.vibe_manager.get_room_by_session(session_id)
+        if room:
+            return f"{self.base_url}/vibe/{room.id}"
+        return None
 
-        # For UI embedding mode, return the vibe room URL
-        return f"{self.base_url}/vibe/{session.vibe_room_id}"
-
-    async def monitor_plan_completion(self, session_id: str, gitlab_client, project_id: int, issue_id: int) -> None:
-        """Monitor a planning session and send results back to GitLab.
-        
-        Polls OpenCode for messages and detects plan completion.
-        """
-        session = self.sessions.get(session_id)
-        if not session:
-            logger.error(f"Session not found for monitoring: {session_id}")
-            return
-
-        try:
-            logger.info(f"Starting plan monitoring for session {session_id}")
-            
-            max_attempts = 45  # 7.5 minutes with 10s intervals
-            attempts = 0
-            plan_detected = False
-            
-            while attempts < max_attempts and not plan_detected:
-                try:
-                    messages = await self.client.get_messages(session.container_id)
-                    message_count = len(messages)
-                    
-                    logger.debug(f"Session {session_id}: {message_count} messages on attempt {attempts + 1}/{max_attempts}")
-                    
-                    if message_count > 1:  # Initial message + AI response
-                        last_message = messages[-1]
-                        content = self._extract_text_from_message(last_message)
-                        
-                        # Check for plan completion
-                        if self._detect_plan_completion(content, message_count):
-                            logger.info(f"Plan completion detected for session {session_id}")
-                            plan_detected = True
-                            
-                            # Extract plan from messages
-                            plan_content = self._extract_plan_from_messages(messages)
-                            
-                            # Post to GitLab
-                            await self._post_plan_to_gitlab(
-                                gitlab_client, project_id, issue_id,
-                                session, plan_content, messages
-                            )
-                            
-                            session.status = SessionStatus.COMPLETED
-                            session.ended_at = datetime.utcnow()
-                            logger.info(f"Planning session completed: {session_id}")
-                            return
-                
-                except Exception as e:
-                    logger.warning(f"Error checking session {session_id} on attempt {attempts + 1}: {e}")
-                    # Continue monitoring despite individual errors
-                
-                await asyncio.sleep(10)  # Check every 10 seconds
-                attempts += 1
-            
-            # Handle timeout
-            if not plan_detected:
-                logger.warning(f"Planning session timed out after {max_attempts} attempts: {session_id}")
-                await self._post_timeout_to_gitlab(gitlab_client, project_id, issue_id, session)
-        
-        except Exception as e:
-            logger.error(f"Critical error monitoring planning session {session_id}: {e}", exc_info=True)
-            await self._post_error_to_gitlab(gitlab_client, project_id, issue_id, session, str(e))
-
-    def _extract_text_from_message(self, message: Dict[str, Any]) -> str:
-        """Extract text content from an OpenCode message object.
-        
-        OpenCode messages have nested structure:
-        {
-            "info": {...},
-            "parts": [
-                {"type": "text", "text": "content"},
-                ...
-            ]
-        }
-        """
-        # Try direct content/text fields first
-        if 'content' in message and message['content']:
-            return message['content']
-        if 'text' in message and message['text']:
-            return message['text']
-        
-        # Try nested parts structure
-        if 'parts' in message and isinstance(message['parts'], list):
-            text_parts = []
-            for part in message['parts']:
-                if isinstance(part, dict):
-                    if 'text' in part and part['text']:
-                        text_parts.append(part['text'])
-                    elif 'content' in part and part['content']:
-                        text_parts.append(part['content'])
-            if text_parts:
-                return '\n'.join(text_parts)
-        
-        return ''
-
-    def _detect_plan_completion(self, content: str, message_count: int) -> bool:
-        """Detect if content appears to be a completed plan."""
-        if not content:
-            return False
-        
-        content_lower = content.lower()
-        
-        # Check for plan indicators
-        plan_indicators = [
-            "implementation plan",
-            "## plan",
-            "## implementation plan",
-            "## analysis",
-            "## approach",
-            "## files to",
-            "## implementation steps",
-            "## testing plan",
-            "step 1:",
-            "step-by-step plan",
-        ]
-        
-        for indicator in plan_indicators:
-            if indicator in content_lower:
-                return True
-        
-        return False
-
-    def _extract_plan_from_messages(self, messages: List[Dict]) -> str:
-        """Extract planning content from messages."""
-        plan_parts = []
-        
-        for message in messages[1:]:  # Skip initial context message
-            content = self._extract_text_from_message(message)
-            if content and len(content) > 50:  # Substantial content
-                plan_parts.append(content)
-        
-        return '\n\n'.join(plan_parts)
-
-    async def _post_plan_to_gitlab(self, gitlab_client, project_id: int, issue_id: int,
-                                   session: Session, plan_content: str, messages: list = None) -> None:
-        """Post completed plan to GitLab issue."""
-        try:
-            response = f"""## 📋 Implementation Plan Completed ✅
-
-**Session ID:** `{session.id}`
-**Issue:** #{issue_id}
-**Branch:** `{getattr(session, 'branch', 'main')}`
-**Generated at:** {datetime.utcnow().isoformat()}
-
-### AI-Generated Implementation Plan
-
-{plan_content}
-
----
-
-### Next Steps
-
-Reply to this comment with:
-`@phixr-bot /ai-implement`
-
----
-
-**Generated by Phixr + OpenCode Integration**
-"""
-            
-            await gitlab_client.issues.update(issue_id, description=response)
-            logger.info(f"Posted plan to GitLab issue #{issue_id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to post plan to GitLab: {e}")
-
-    async def _post_timeout_to_gitlab(self, gitlab_client, project_id: int, issue_id: int, session: Session) -> None:
-        """Post timeout message to GitLab issue."""
-        try:
-            message = f"""⏰ **Planning Session Timeout**
-
-Session `{session.id}` did not complete within the timeout period.
-
-Please try again with `/ai-plan` or provide additional context for refinement.
-"""
-            
-            await gitlab_client.issues.update(issue_id, description=message)
-            logger.warning(f"Posted timeout message to GitLab issue #{issue_id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to post timeout to GitLab: {e}")
-
-    async def _post_error_to_gitlab(self, gitlab_client, project_id: int, issue_id: int, session: Session, error: str) -> None:
-        """Post error message to GitLab issue."""
-        try:
-            message = f"""❌ **Planning Session Error**
-
-Session `{session.id}` encountered an error:
-
-```
-{error}
-```
-
-Please try again with `/ai-plan` or contact support.
-"""
-            
-            await gitlab_client.issues.update(issue_id, description=message)
-            logger.error(f"Posted error message to GitLab issue #{issue_id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to post error to GitLab: {e}")
-
-
-    async def cleanup_old_sessions(self, older_than_hours: int = 24) -> int:
-        """Clean up old sessions."""
-        cutoff_time = datetime.utcnow().replace(hour=datetime.utcnow().hour - older_than_hours)
-
-        cleaned = 0
-        for session_id, session in list(self.sessions.items()):
-            if session.ended_at and session.ended_at < cutoff_time:
-                try:
-                    if session.container_id:
-                        await self.client.delete_session(session.container_id)
-                    del self.sessions[session_id]
-                    cleaned += 1
-                except Exception as e:
-                    logger.warning(f"Error cleaning up session {session_id}: {e}")
-
-        logger.info(f"Cleaned up {cleaned} old sessions")
-        return cleaned
-
-    def _parse_diff_files(self, diff: str) -> List[str]:
-        """Parse diff output to extract changed files."""
-        files = []
-        if not diff:
-            return files
-
-        for line in diff.split("\n"):
-            if line.startswith("diff --git"):
-                # Extract filename from "diff --git a/path b/path"
-                parts = line.split()
-                if len(parts) >= 4:
-                    # Remove a/ prefix
-                    filename = parts[3][2:]
-                    if filename not in files:
-                        files.append(filename)
-
-        return files
+    # ── Lifecycle ────────────────────────────────────────────────────────
 
     async def close(self) -> None:
-        """Close the integration service and cleanup."""
-        logger.info("Closing OpenCode integration service")
-
-        # Stop all active sessions
-        for session in list(self.sessions.values()):
-            if session.status in [SessionStatus.RUNNING, SessionStatus.INITIALIZING]:
-                try:
-                    await self.stop_session(session.id)
-                except Exception as e:
-                    logger.warning(f"Error stopping session {session.id}: {e}")
-
-        self.sessions.clear()
+        """Shutdown: close HTTP client."""
+        await self.client.close()
         logger.info("OpenCode integration service closed")
-
-    # Sync wrappers for synchronous callers (like comment handler)
-    def create_session_sync(
-        self,
-        context: IssueContext,
-        execution_mode: ExecutionMode = ExecutionMode.BUILD,
-        timeout_minutes: Optional[int] = None,
-        owner_id: str = "single-user"
-    ) -> Session:
-        """Synchronous wrapper for create_session."""
-        return asyncio.run(self.create_session(
-            context=context,
-            execution_mode=execution_mode,
-            timeout_minutes=timeout_minutes,
-            owner_id=owner_id
-        ))
-
-    def stop_session_sync(self, session_id: str, force: bool = False) -> bool:
-        """Synchronous wrapper for stop_session."""
-        return asyncio.run(self.stop_session(session_id, force))
-
-    def get_session_results_sync(self, session_id: str) -> Optional[ExecutionResult]:
-        """Synchronous wrapper for get_session_results."""
-        return asyncio.run(self.get_session_results(session_id))

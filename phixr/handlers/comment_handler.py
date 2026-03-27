@@ -17,51 +17,28 @@ class AssignmentHandler:
     """Handles issue assignment tracking."""
 
     def __init__(self, bot_user_id: int, gitlab_client: GitLabClient):
-        """Initialize assignment handler.
-
-        Args:
-            bot_user_id: ID of the bot user
-            gitlab_client: GitLab API client for checking assignments
-        """
         self.bot_user_id = bot_user_id
         self.gitlab_client = gitlab_client
-        # Cache for performance (could be Redis/DB in production)
         self.assigned_issues = set()
-    
+
     def track_assignment(self, project_id: int, issue_id: int, assignee_ids: list):
-        """Track if the bot is assigned to an issue.
-        
-        Args:
-            project_id: GitLab project ID
-            issue_id: GitLab issue ID
-            assignee_ids: List of user IDs assigned to the issue
-        """
+        """Track if the bot is assigned to an issue."""
         issue_key = f"{project_id}:{issue_id}"
-        
+
         if self.bot_user_id in assignee_ids:
             self.assigned_issues.add(issue_key)
             logger.info(f"Bot assigned to issue {issue_key}")
         else:
             self.assigned_issues.discard(issue_key)
             logger.info(f"Bot unassigned from issue {issue_key}")
-    
+
     def is_bot_assigned(self, project_id: int, issue_id: int) -> bool:
-        """Check if bot is assigned to an issue.
-
-        Args:
-            project_id: GitLab project ID
-            issue_id: GitLab issue ID
-
-        Returns:
-            True if bot is assigned, False otherwise
-        """
+        """Check if bot is assigned to an issue."""
         try:
-            # Check cache first
             issue_key = f"{project_id}:{issue_id}"
             if issue_key in self.assigned_issues:
                 return True
 
-            # Check GitLab API
             issue = self.gitlab_client.get_issue(project_id, issue_id)
             if issue and 'assignees' in issue:
                 assignee_ids = [assignee.get('id') for assignee in issue['assignees'] if assignee]
@@ -73,171 +50,110 @@ class AssignmentHandler:
         except Exception as e:
             logger.warning(f"Failed to check bot assignment for issue {project_id}/{issue_id}: {e}")
             return False
-    
+
     def get_assigned_issues(self) -> set:
-        """Get all issues the bot is assigned to.
-        
-        Returns:
-            Set of issue keys (format: "project_id:issue_id")
-        """
         return self.assigned_issues.copy()
 
 
 class CommentHandler:
     """Handles issue comment events from webhooks."""
-    
+
     def __init__(self, gitlab_client: GitLabClient, bot_user_id: int,
                   assignment_handler: AssignmentHandler,
                   opencode_integration: Optional['OpenCodeIntegrationService'] = None):
-        """Initialize comment handler.
-
-        Args:
-            gitlab_client: GitLab API client
-            bot_user_id: ID of the bot user
-            assignment_handler: Assignment tracking handler
-            opencode_integration: Optional OpenCode integration service for Phase 2 features
-        """
         self.gitlab_client = gitlab_client
         self.bot_user_id = bot_user_id
         self.assignment_handler = assignment_handler
         self.context_extractor = ContextExtractor(gitlab_client)
         self.command_parser = CommandParser()
         self.opencode_integration = opencode_integration
-    
+
     def set_opencode_integration(self, integration: 'OpenCodeIntegrationService'):
-        """Set the OpenCode integration service for Phase 2 features."""
+        """Set the OpenCode integration service."""
         self.opencode_integration = integration
-    
+
     async def handle_issue_comment(self, webhook_data: dict) -> bool:
-        """Handle an issue comment webhook event.
-        
-        Bot responds when:
-        - @phixr-bot is mentioned in the comment, OR
-        - Comment author is assigned to an issue where phixr-bot is also assigned
-        
-        Args:
-            webhook_data: Webhook payload from GitLab
-            
-        Returns:
-            True if handled successfully, False otherwise
-        """
+        """Handle an issue comment webhook event."""
         try:
             project_id = webhook_data['project']['id']
-            # For note events, issue iid is in 'issue.iid', not 'object_attributes.iid'
             issue_id = webhook_data.get('issue', {}).get('iid') or webhook_data.get('object_attributes', {}).get('iid')
             comment_author = webhook_data['user']['username']
             comment_id = webhook_data['object_attributes']['id']
             comment_body = webhook_data['object_attributes']['note'] or ''
-            
+
             if issue_id is None:
                 logger.warning(f"Could not extract issue iid from webhook payload")
-                logger.warning(f"Webhook payload keys: {webhook_data.keys()}")
                 return False
-            
+
             # Ignore comments from the bot itself
             if comment_author == settings.bot_username:
-                logger.info(f"Ignoring comment from bot user ({comment_author})")
                 return False
-            
+
             logger.info(f"Received comment on issue {project_id}/{issue_id} from {comment_author}")
-            logger.info(f"Bot username from settings: {settings.bot_username}")
-            logger.info(f"Comment body: {comment_body[:200]}...")
-            
+
             # Check if @phixr-bot is mentioned
             bot_mentioned = '@phixr-bot' in comment_body.lower()
-            logger.info(f"Bot mentioned check: {bot_mentioned}")
-            
-            # Check if user is assigned to this issue (we'll check via API)
-            # For now, respond if bot is mentioned OR if bot is assigned
             should_respond = bot_mentioned or self.assignment_handler.is_bot_assigned(project_id, issue_id)
-            
+
             if not should_respond:
-                logger.debug(f"No mention of @phixr-bot and bot not assigned to issue {project_id}/{issue_id}, ignoring")
                 return False
-            
+
             # Parse commands from comment
             commands = self.command_parser.extract_commands(comment_body)
-            logger.info(f"Commands found: {commands}")
-            
+
             if not commands:
-                logger.debug(f"No commands found in comment")
                 if bot_mentioned:
-                    # Acknowledge the mention even without a command
                     await self._handle_acknowledge_command(project_id, issue_id)
                     return True
                 return False
-            
+
             # Process each command
             for command_name, args in commands:
                 logger.info(f"Processing command: {command_name} with args {args}")
                 await self._process_command(command_name, args, project_id, issue_id,
                                            comment_author, comment_id, comment_body)
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error handling comment event: {e}", exc_info=True)
             return False
-    
+
     async def _process_command(self, command_name: str, args: list,
                                project_id: int, issue_id: int, comment_author: str,
                                comment_id: int, comment_body: str):
-        """Process a single command.
-        
-        Args:
-            command_name: Name of the command
-            args: Command arguments
-            project_id: GitLab project ID
-            issue_id: GitLab issue ID
-            comment_author: Author of the comment
-            comment_id: ID of the comment
-            comment_body: Full comment text
-        """
+        """Route command to handler."""
         if command_name == 'ai-status':
             await self._handle_status_command(project_id, issue_id)
-
         elif command_name == 'ai-help':
             await self._handle_help_command(project_id, issue_id)
-
         elif command_name == 'ai-acknowledge':
             await self._handle_acknowledge_command(project_id, issue_id)
-
         elif command_name == 'ai-plan':
             await self._handle_plan_command(project_id, issue_id, comment_author)
-
         elif command_name == 'ai-implement':
-            await self._handle_implement_command(project_id, issue_id, args)
-
+            await self._handle_implement_command(project_id, issue_id, args, comment_author)
         elif command_name == 'ai-review-mr':
-            await self._handle_review_mr_command(project_id, issue_id, args)
-
+            await self._handle_review_mr_command(project_id, issue_id, args, comment_author)
         elif command_name == 'ai-fix-tests':
-            await self._handle_fix_tests_command(project_id, issue_id, args)
-
+            await self._handle_fix_tests_command(project_id, issue_id, args, comment_author)
         else:
             await self._handle_future_command(command_name, project_id, issue_id)
-    
+
     def _extract_issue_context(self, project_id: int, issue_id: int):
-        """Extract issue context for OpenCode.
-        
-        Args:
-            project_id: GitLab project ID
-            issue_id: GitLab issue ID
-            
-        Returns:
-            IssueContext or None if extraction fails
-        """
+        """Extract issue context for OpenCode."""
         return self.context_extractor.extract_issue_context(project_id, issue_id)
-    
+
+    # ── Simple Commands ──────────────────────────────────────────────────
+
     async def _handle_status_command(self, project_id: int, issue_id: int):
         """Handle /ai-status command."""
         context = self.context_extractor.extract_issue_context(project_id, issue_id)
-        
+
         if not context:
             response = "❌ Could not extract issue context"
         else:
-            response = f"""
-✅ Bot Status: Ready
+            response = f"""✅ Bot Status: Ready
 
 **Issue Context:**
 - Title: {context.title}
@@ -246,404 +162,222 @@ class CommentHandler:
 - Labels: {', '.join(context.labels) or 'None'}
 - Comments: {len(context.comments)}
 
-Use `/ai-help` to see available commands.
-            """.strip()
-        
-        logger.info(f"Posting status response to issue {project_id}/{issue_id}")
-        result = self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-        if result:
-            logger.info(f"✅ Status response posted successfully")
-        else:
-            logger.error(f"❌ Status response posting failed")
-    
+Use `/ai-help` to see available commands."""
+
+        self.gitlab_client.add_issue_comment(project_id, issue_id, response)
+
     async def _handle_help_command(self, project_id: int, issue_id: int):
         """Handle /ai-help command."""
         available_commands = self.command_parser.get_supported_commands()
-        
+
         response = "📚 **Available Commands:**\n\n"
-        
-        # Phase 1 commands
+
         phase_1 = self.command_parser.get_phase_1_commands()
         response += "**Phase 1 (Available Now):**\n"
         for cmd, desc in phase_1.items():
             response += f"- `/{cmd}` - {desc}\n"
-        
-        # Future commands
+
         future_cmds = {k: v for k, v in available_commands.items() if k not in phase_1}
         if future_cmds:
             response += "\n**Coming Soon:**\n"
             for cmd, desc in future_cmds.items():
                 response += f"- `/{cmd}` - {desc}\n"
-        
-        logger.info(f"Posting help response to issue {project_id}/{issue_id}")
-        result = self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-        if result:
-            logger.info(f"✅ Help response posted successfully")
-        else:
-            logger.error(f"❌ Help response posting failed")
-    
+
+        self.gitlab_client.add_issue_comment(project_id, issue_id, response)
+
     async def _handle_acknowledge_command(self, project_id: int, issue_id: int):
         """Handle /ai-acknowledge command."""
         response = "👋 **Phixr Bot:** I'm ready to assist with this issue! Use `/ai-help` for available commands."
-        logger.info(f"Posting acknowledge response to issue {project_id}/{issue_id}")
-        result = self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-        if result:
-            logger.info(f"✅ Acknowledge response posted successfully")
-        else:
-            logger.error(f"❌ Acknowledge response posting failed")
-    
-    async def _handle_plan_command(self, project_id: int, issue_id: int, comment_author: str):
-        """Handle /ai-plan command - generates implementation plan using OpenCode.
+        self.gitlab_client.add_issue_comment(project_id, issue_id, response)
+
+    async def _handle_future_command(self, command_name: str, project_id: int, issue_id: int):
+        """Handle commands that are not yet implemented."""
+        response = f"⏳ Command `/{command_name}` is coming in a future phase. Stay tuned!"
+        self.gitlab_client.add_issue_comment(project_id, issue_id, response)
+
+    # ── OpenCode Session Commands ────────────────────────────────────────
+    # All follow the same pattern:
+    # 1. Check opencode_integration is available
+    # 2. Extract issue context
+    # 3. Post acknowledgment to GitLab
+    # 4. Create OpenCode session
+    # 5. Post session info to GitLab
+    # 6. Start background monitoring task
+
+    async def _start_opencode_session(
+        self,
+        project_id: int,
+        issue_id: int,
+        comment_author: str,
+        mode: 'ExecutionMode',
+        mode_label: str,
+        mode_emoji: str,
+        timeout_minutes: int = 30,
+        extra_context: str = "",
+    ) -> None:
+        """Shared logic for starting an OpenCode session.
 
         Args:
             project_id: GitLab project ID
             issue_id: GitLab issue ID
-            comment_author: Author of the comment (for context)
+            comment_author: Who triggered the command
+            mode: ExecutionMode (PLAN, BUILD, REVIEW)
+            mode_label: Human label for messages (e.g. "Planning", "Implementation")
+            mode_emoji: Emoji for messages
+            timeout_minutes: Session timeout
+            extra_context: Additional text appended to the issue description
         """
         if not self.opencode_integration:
-            response = "❌ **OpenCode not available.** Phase 2 sandbox is not configured."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
+            self.gitlab_client.add_issue_comment(
+                project_id, issue_id,
+                "❌ **OpenCode not available.** Sandbox is not configured."
+            )
             return
-        
+
         context = self._extract_issue_context(project_id, issue_id)
         if not context:
-            response = "❌ Could not extract issue context. Make sure the issue exists and is accessible."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
+            self.gitlab_client.add_issue_comment(
+                project_id, issue_id,
+                "❌ Could not extract issue context. Make sure the issue exists and is accessible."
+            )
             return
-        
+
         if not context.repo_url:
-            response = "❌ No repository URL found in issue context. Ensure the project has a repository configured."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
+            self.gitlab_client.add_issue_comment(
+                project_id, issue_id,
+                "❌ No repository URL found. Ensure the project has a repository configured."
+            )
             return
-        
+
+        # Append extra context to the description if provided
+        if extra_context:
+            context.description = f"{context.description or ''}\n\n{extra_context}"
+
         try:
-            # Post initial acknowledgment
-            ack_response = f"""
-🤖 **Phixr Bot - Planning Phase**
+            # Post acknowledgment
+            self.gitlab_client.add_issue_comment(
+                project_id, issue_id,
+                f"{mode_emoji} **Phixr Bot — {mode_label} Phase**\n\n"
+                f"Analyzing issue and starting {mode_label.lower()}...\n\n"
+                f"**Issue:** [{context.title}]({context.url})\n\n"
+                f"This may take a moment."
+            )
 
-I'm analyzing the issue and generating an implementation plan...
-
-**Issue:** [{context.title}]({context.url})
-
-This may take a moment. I'll post the plan here when ready.
-            """.strip()
-            self.gitlab_client.add_issue_comment(project_id, issue_id, ack_response)
-            
-            # Build prompt for planning
-            plan_prompt = self._build_plan_prompt(context, comment_author)
-            
-            # Start OpenCode session for planning
             from phixr.models.execution_models import ExecutionMode
             session = await self.opencode_integration.create_session(
                 context=context,
-                execution_mode=ExecutionMode.PLAN,
-                timeout_minutes=15,  # Shorter timeout for planning
-                owner_id=comment_author
+                execution_mode=mode,
+                timeout_minutes=timeout_minutes,
+                owner_id=comment_author,
             )
 
-            logger.info(f"Plan session started: {session.id} for issue {project_id}/{issue_id}")
+            logger.info(f"{mode_label} session started: {session.id} for issue {project_id}/{issue_id}")
 
-            # Generate vibe session URL
-            vibe_room = self.opencode_integration.get_vibe_room_by_session(session.id)
-            logger.info(f"Vibe room lookup result: {vibe_room}")
-            if vibe_room:
-                logger.info(f"Vibe room found: {vibe_room.id}")
-                vibe_url = self.opencode_integration.create_vibe_session_url(session.id)
-            else:
-                logger.warning(f"No vibe room found for session {session.id}")
-                vibe_url = None
-
-            response = f"""
-
-🤖 **AI Planning Session Started**
-
-**Session ID:** `{session.id}`
-**Issue:** [{context.title}]({context.url})
-
-The AI is now analyzing the cloned repository and will generate a detailed implementation plan.
-
-{f"**Vibe Coding Session:** [Open in Browser]({vibe_url})" if vibe_url else ""}
-
-The plan will be posted here automatically when complete. You can also monitor progress in the Vibe Room.
-
-To abort this session, reply with:
-`@phixr-bot /ai-abort`
-            """.strip()
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-
-            # Start monitoring for plan completion as background task
-            logger.info(f"Starting plan monitoring for session {session.id}")
-            # Run monitoring in background task
-            monitoring_task = asyncio.create_task(
-                self.opencode_integration.monitor_plan_completion(
-                    session.id, self.gitlab_client, project_id, issue_id
-                )
-            )
-            # Store task reference for potential cancellation
-            session.monitoring_task = monitoring_task
-            logger.info(f"Plan monitoring started as background task for session {session.id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to start plan session: {e}")
-            response = f"❌ **Failed to start planning session:** {str(e)}"
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-    
-    async def _handle_review_mr_command(self, project_id: int, issue_id: int, args: list):
-        """Handle /ai-review-mr command - reviews a merge request.
-        
-        Args:
-            project_id: GitLab project ID
-            issue_id: GitLab issue ID
-            args: Command arguments (should contain MR URL or IID)
-        """
-        if not self.opencode_bridge:
-            response = "❌ **OpenCode not available.** Phase 2 sandbox is not configured."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            return
-        
-        # Get MR info from args or extract from issue context
-        mr_reference = args[0] if args else None
-        
-        if not mr_reference:
-            response = """❌ **Missing MR reference**
-
-Usage: `/ai-review-mr <mr-url-or-iid>`
-
-Example:
-- `/ai-review-mr !123`
-- `/ai-review-mr https://gitlab.example.com/project/-/merge_requests/123`
-            """.strip()
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            return
-        
-        context = self._extract_issue_context(project_id, issue_id)
-        if not context:
-            response = "❌ Could not extract issue context."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            return
-        
-        try:
-            # Post initial acknowledgment
-            ack_response = f"""
-🔍 **Phixr Bot - MR Review**
-
-I'm reviewing merge request: **{mr_reference}**
-
-This may take a moment. I'll post the review here when ready.
-            """.strip()
-            self.gitlab_client.add_issue_comment(project_id, issue_id, ack_response)
-            
-            # Build prompt for MR review
-            review_prompt = self._build_review_prompt(context, mr_reference)
-            
-            # Start OpenCode session for review
-            from phixr.models.execution_models import ExecutionMode
-            session = self.opencode_bridge.start_opencode_session(
-                context=context,
-                mode=ExecutionMode.REVIEW,
-                initial_prompt=review_prompt,
-                timeout_minutes=20,
-            )
-            
-            response = f"""
-🔍 **MR Review Session Started**
-
-**Session ID:** `{session.id}`
-**MR:** `{mr_reference}`
-
-The AI is reviewing the merge request. Check back for the review results.
-            """.strip()
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            
-        except Exception as e:
-            logger.error(f"Failed to start MR review session: {e}")
-            response = f"❌ **Failed to start MR review:** {str(e)}"
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-    
-    async def _handle_fix_tests_command(self, project_id: int, issue_id: int, args: list):
-        """Handle /ai-fix-tests command - fixes failing tests.
-        
-        Args:
-            project_id: GitLab project ID
-            issue_id: GitLab issue ID
-            args: Command arguments (optional test pattern or MR reference)
-        """
-        if not self.opencode_bridge:
-            response = "❌ **OpenCode not available.** Phase 2 sandbox is not configured."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            return
-        
-        context = self._extract_issue_context(project_id, issue_id)
-        if not context:
-            response = "❌ Could not extract issue context."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            return
-        
-        if not context.repo_url:
-            response = "❌ No repository URL found in issue context."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            return
-        
-        try:
-            # Optional test pattern from args
-            test_pattern = args[0] if args else None
-            
-            # Post initial acknowledgment
-            ack_response = f"""
-🧪 **Phixr Bot - Fixing Tests**
-
-I'm analyzing the failing tests and will attempt to fix them...
-
-{f'**Pattern:** `{test_pattern}`' if test_pattern else ''}
-
-This may take a moment. I'll post the results here when ready.
-            """.strip()
-            self.gitlab_client.add_issue_comment(project_id, issue_id, ack_response)
-            
-            # Build prompt for test fixing
-            fix_prompt = self._build_fix_tests_prompt(context, test_pattern)
-            
-            # Start OpenCode session for test fixing
-            from phixr.models.execution_models import ExecutionMode
-            session = self.opencode_bridge.start_opencode_session(
-                context=context,
-                mode=ExecutionMode.BUILD,
-                initial_prompt=fix_prompt,
-                timeout_minutes=30,
-            )
-            
-            response = f"""
-🧪 **Test Fix Session Started**
-
-**Session ID:** `{session.id}`
-**Issue:** [{context.title}]({context.url})
-
-The AI is fixing the failing tests. Check back for results.
-            """.strip()
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            
-        except Exception as e:
-            logger.error(f"Failed to start test fix session: {e}")
-            response = f"❌ **Failed to start test fix session:** {str(e)}"
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-    
-    async def _handle_implement_command(self, project_id: int, issue_id: int, args: list):
-        """Handle /ai-implement command - executes the plan from previous planning session.
-
-        Production-quality implementation that:
-        - Uses the new OpenCodeIntegrationService (not legacy bridge)
-        - Creates BUILD mode session with plan context
-        - Provides clear status updates to GitLab
-        - Integrates with branch management and session lifecycle
-
-        Args:
-            project_id: GitLab project ID
-            issue_id: GitLab issue ID
-            args: Command arguments (optional mode, etc.)
-        """
-        if not self.opencode_integration:
-            response = "❌ **OpenCode not available.** Phase 2 sandbox is not configured."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            return
-
-        context = self._extract_issue_context(project_id, issue_id)
-        if not context:
-            response = "❌ Could not extract issue context. Make sure the issue exists and is accessible."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            return
-
-        if not context.repo_url:
-            response = "❌ No repository URL found in issue context. Ensure the project has a repository configured."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            return
-
-        try:
-            # Acknowledge the command immediately
-            ack_response = f"""
-🤖 **Phixr Bot - Implementation Phase**
-
-Starting implementation of the plan for issue #{issue_id}...
-**Branch:** `{context.branch}`
-
-This may take a while as the AI works through the implementation plan.
-I'll provide updates as progress is made.
-            """.strip()
-            self.gitlab_client.add_issue_comment(project_id, issue_id, ack_response)
-
-            from phixr.models.execution_models import ExecutionMode
-
-            # Create implementation session (BUILD mode)
-            session = await self.opencode_integration.create_session(
-                context=context,
-                execution_mode=ExecutionMode.BUILD,  # Full access for implementation
-                timeout_minutes=45,  # Longer timeout for implementation
-                owner_id="phixr-bot"  # System user
-            )
-
-            logger.info(f"Implementation session started: {session.id} for issue {project_id}/{issue_id}")
-
-            # Get vibe room URL for interactive monitoring
+            # Get vibe room URL
             vibe_room = self.opencode_integration.get_vibe_room_by_session(session.id)
             vibe_url = self.opencode_integration.create_vibe_session_url(session.id) if vibe_room else None
 
-            response = f"""
-🤖 **AI Implementation Session Started** 🚀
+            vibe_line = f"\n**Vibe Room:** [Open in Browser]({vibe_url})" if vibe_url else ""
+            self.gitlab_client.add_issue_comment(
+                project_id, issue_id,
+                f"{mode_emoji} **AI {mode_label} Session Started**\n\n"
+                f"**Session ID:** `{session.id}`\n"
+                f"**Branch:** `{session.branch}`\n"
+                f"**Mode:** {mode.value.upper()}"
+                f"{vibe_line}\n\n"
+                f"Results will be posted here when complete.\n\n"
+                f"To abort: `@phixr-bot /ai-abort`"
+            )
 
-**Session ID:** `{session.id}`
-**Issue:** #{issue_id}
-**Branch:** `{context.branch}`
-**Mode:** BUILD (full edit access)
-
-The AI is now implementing the plan. You can:
-- Monitor progress in the [Vibe Room]({vibe_url}) (if available)
-- Check status with `/ai-status {session.id}`
-- View real-time updates in this issue thread
-
-**Expected duration:** 10-45 minutes depending on complexity
-
-To abort this session, reply with:
-`@phixr-bot /ai-abort {session.id}`
-            """.strip()
-
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-            logger.info(f"✅ Implementation session {session.id} started successfully for issue {project_id}/{issue_id}")
-
-            # Start monitoring for implementation completion (background task)
-            monitoring_task = asyncio.create_task(
-                self.opencode_integration.monitor_implementation_completion(
+            # Start background monitoring
+            asyncio.create_task(
+                self.opencode_integration.monitor_session(
                     session.id, self.gitlab_client, project_id, issue_id
                 )
             )
-            session.monitoring_task = monitoring_task
 
         except Exception as e:
-            logger.error(f"💥 Failed to start implementation session: {e}", exc_info=True)
-            response = f"❌ **Failed to start implementation session:** {str(e)}\n\nPlease try again or check the logs for details."
-            self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-    
-    async def _handle_future_command(self, command_name: str, project_id: int, issue_id: int):
-        """Handle commands that are implemented in future phases."""
-        response = f"⏳ Command `/{command_name}` is coming in a future phase. Stay tuned!"
-        self.gitlab_client.add_issue_comment(project_id, issue_id, response)
-    
+            logger.error(f"Failed to start {mode_label.lower()} session: {e}", exc_info=True)
+            self.gitlab_client.add_issue_comment(
+                project_id, issue_id,
+                f"❌ **Failed to start {mode_label.lower()} session:** {str(e)}"
+            )
+
+    async def _handle_plan_command(self, project_id: int, issue_id: int, comment_author: str):
+        """Handle /ai-plan command."""
+        from phixr.models.execution_models import ExecutionMode
+        await self._start_opencode_session(
+            project_id, issue_id, comment_author,
+            mode=ExecutionMode.PLAN,
+            mode_label="Planning",
+            mode_emoji="🤖",
+            timeout_minutes=15,
+        )
+
+    async def _handle_implement_command(self, project_id: int, issue_id: int,
+                                        args: list, comment_author: str):
+        """Handle /ai-implement command."""
+        from phixr.models.execution_models import ExecutionMode
+        await self._start_opencode_session(
+            project_id, issue_id, comment_author,
+            mode=ExecutionMode.BUILD,
+            mode_label="Implementation",
+            mode_emoji="🚀",
+            timeout_minutes=45,
+        )
+
+    async def _handle_review_mr_command(self, project_id: int, issue_id: int,
+                                        args: list, comment_author: str):
+        """Handle /ai-review-mr command."""
+        mr_reference = args[0] if args else None
+
+        if not mr_reference:
+            self.gitlab_client.add_issue_comment(
+                project_id, issue_id,
+                "❌ **Missing MR reference**\n\n"
+                "Usage: `/ai-review-mr <mr-url-or-iid>`\n\n"
+                "Example: `/ai-review-mr !123`"
+            )
+            return
+
+        from phixr.models.execution_models import ExecutionMode
+        await self._start_opencode_session(
+            project_id, issue_id, comment_author,
+            mode=ExecutionMode.REVIEW,
+            mode_label="MR Review",
+            mode_emoji="🔍",
+            timeout_minutes=20,
+            extra_context=f"\n\n**Merge Request to Review:** {mr_reference}",
+        )
+
+    async def _handle_fix_tests_command(self, project_id: int, issue_id: int,
+                                        args: list, comment_author: str):
+        """Handle /ai-fix-tests command."""
+        test_pattern = args[0] if args else None
+        extra = f"\n\n**Test Pattern:** `{test_pattern}`" if test_pattern else ""
+        extra += "\n\n**Task:** Run the test suite, identify failures, and fix them."
+
+        from phixr.models.execution_models import ExecutionMode
+        await self._start_opencode_session(
+            project_id, issue_id, comment_author,
+            mode=ExecutionMode.BUILD,
+            mode_label="Test Fix",
+            mode_emoji="🧪",
+            timeout_minutes=30,
+            extra_context=extra,
+        )
+
+    # ── Prompt Building (kept for reference, but now handled by integration service) ──
+
     def _build_plan_prompt(self, context, comment_author: str) -> str:
-        """Build prompt for generating implementation plan.
-        
-        Args:
-            context: IssueContext with issue details
-            comment_author: Author of the comment
-            
-        Returns:
-            Prompt string for OpenCode
-        """
-        # Format comments for context
+        """Build prompt for generating implementation plan."""
         comments_text = ""
         if context.comments:
             comments_text = "\n\n**Issue Comments:**\n"
-            for c in context.comments[-10:]:  # Last 10 comments
+            for c in context.comments[-10:]:
                 comments_text += f"- **{c.get('author', 'unknown')}**: {c.get('body', '')[:500]}\n"
-        
-        prompt = f"""You are Phixr, an AI coding assistant. Generate a detailed implementation plan for the following GitLab issue.
+
+        return f"""You are Phixr, an AI coding assistant. Generate a detailed implementation plan for the following GitLab issue.
 
 ## Issue Details
 - **Title:** {context.title}
@@ -670,19 +404,10 @@ Clone the repository at {context.repo_url}, explore the codebase, and provide yo
 
 Format your response as a markdown implementation plan.
 """
-        return prompt
-    
+
     def _build_review_prompt(self, context, mr_reference: str) -> str:
-        """Build prompt for reviewing a merge request.
-        
-        Args:
-            context: IssueContext with issue details
-            mr_reference: MR URL or IID
-            
-        Returns:
-            Prompt string for OpenCode
-        """
-        prompt = f"""You are Phixr, an AI coding assistant. Review the following merge request for the project.
+        """Build prompt for reviewing a merge request."""
+        return f"""You are Phixr, an AI coding assistant. Review the following merge request.
 
 ## Issue Context
 - **Title:** {context.title}
@@ -694,58 +419,28 @@ Format your response as a markdown implementation plan.
 
 ## Your Task
 1. Fetch the merge request details
-2. Review the code changes:
-   - Check for bugs or potential issues
-   - Evaluate code quality and style
-   - Look for security concerns
-   - Assess test coverage
-3. Provide a comprehensive review with:
-   - Summary of changes
-   - Strengths
-   - Issues to address (if any)
-   - Suggestions for improvement
-   - Overall recommendation
+2. Review the code changes for bugs, quality, security, and test coverage
+3. Provide a comprehensive review
 
 Clone the repository at {context.repo_url} and perform a thorough code review.
-
-Format your response as a markdown review.
 """
-        return prompt
-    
+
     def _build_fix_tests_prompt(self, context, test_pattern: str = None) -> str:
-        """Build prompt for fixing failing tests.
-        
-        Args:
-            context: IssueContext with issue details
-            test_pattern: Optional pattern to match specific tests
-            
-        Returns:
-            Prompt string for OpenCode
-        """
+        """Build prompt for fixing failing tests."""
         pattern_text = f" matching pattern: `{test_pattern}`" if test_pattern else ""
-        
-        prompt = f"""You are Phixr, an AI coding assistant. Fix the failing tests in the project.
+
+        return f"""You are Phixr, an AI coding assistant. Fix the failing tests in the project.
 
 ## Issue Context
 - **Title:** {context.title}
 - **URL:** {context.url}
 - **Description:** {context.description or 'No description'}
 
-## Test Fixing Task
+## Task
 Fix any failing tests{pattern_text}.
 
-## Your Task
 1. Clone the repository at {context.repo_url}
-2. Run the test suite to identify failing tests
-3. Analyze the test failures
-4. Fix the tests by:
-   - Correcting the test code if it's wrong
-   - Fixing the implementation if the tests are correct
-   - Ensuring all tests pass after fixes
-5. Run the test suite again to verify fixes
-
-Clone the repository, run tests, fix the issues, and verify all tests pass.
-
-Format your response as a markdown summary of what was fixed.
+2. Run the test suite to identify failures
+3. Fix the tests
+4. Verify all tests pass
 """
-        return prompt

@@ -8,6 +8,7 @@ redis==5.0.1
 sqlalchemy==2.0.23
 alembic==1.12.1
 httpx==0.25.2
+httpx-sse>=0.4.0
 aiofiles==23.2.1
 click==8.1.7
 

@@ -1,7 +1,6 @@
 services:
   opencode-server:
     image: node:20-slim
-    working_dir: /app
     environment:
       OPENCODE_ZEN_API_KEY: ${OPENCODE_ZEN_API_KEY:-}
     command: >
@@ -49,7 +48,7 @@ services:
       SERVER_PORT: 8000
       
       # Service URLs - configured for Docker network
-      GITLAB_URL: ${GITLAB_URL:-http://host.docker.internal:8080}
+      GITLAB_URL: ${GITLAB_URL:-http://192.168.1.145:8080}
       OPENCODE_SERVER_URL: ${OPENCODE_SERVER_URL:-http://opencode-server:4096}
       PHIXR_API_URL: ${PHIXR_API_URL:-http://phixr-bot:8000}
       WEBHOOK_URL: ${WEBHOOK_URL:-http://phixr-bot:8000/webhooks/gitlab}
@@ -62,7 +61,7 @@ services:
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-phixr-webhook-secret}
     volumes:
       - ./:/app
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/podman/podman.sock:/run/podman/podman.sock
 
   postgres:
     image: postgres:15-alpine

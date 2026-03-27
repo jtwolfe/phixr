@@ -9,7 +9,10 @@ from phixr.models.execution_models import Session, SessionStatus, ExecutionResul
 from phixr.models.issue_context import IssueContext
 from phixr.config.sandbox_config import SandboxConfig
 from phixr.sandbox.docker_client import DockerClientWrapper
-from phixr.bridge.context_injector import ContextInjector
+
+# NOTE: This ContainerManager is unused in the current HTTP-based architecture.
+# OpenCode integration now uses HTTP API with system instructions instead of
+# file-based context injection. Kept for potential future container orchestration.
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,6 @@ class ContainerManager:
         """
         self.config = config
         self.docker = DockerClientWrapper(config)
-        self.context_injector = ContextInjector(config)
         self.sessions: Dict[str, Session] = {}
     
     def create_session(self, context: IssueContext, 
@@ -73,21 +75,16 @@ class ContainerManager:
         logger.info(f"Creating session: {session.id}")
         
         try:
-            # Prepare context volume
-            logger.debug(f"Preparing context volume for session {session.id}")
-            context_path, context_volume = self.context_injector.prepare_context_volume(
-                context, exec_config
-            )
-            
-            # Create environment variables
+            # Prepare environment variables
             git_token = self.config.git_provider_token or ""
-            env_vars = self.context_injector.create_environment_variables(
-                context, exec_config, git_token
-            )
-            
+            env_vars = {
+                "REPO_URL": context.repo_url,
+                "ISSUE_ID": str(context.issue_id),
+                "GIT_TOKEN": git_token,
+            }
+
             # Prepare volume mounts
             mounts = {
-                "/phixr-context": {"bind": context_path, "mode": "ro"},
                 "/phixr-results": {"bind": "/tmp/phixr-results", "mode": "rw"},
             }
             
@@ -132,8 +129,7 @@ class ContainerManager:
             logger.error(f"Error in session {session.id}: {e}")
             raise
         finally:
-            # Always clean up context injector
-            self.context_injector.cleanup_all()
+            pass  # Cleanup handled by container lifecycle
     
     def monitor_session(self, session_id: str) -> Optional[Dict]:
         """Monitor running container status.

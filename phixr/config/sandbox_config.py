@@ -9,15 +9,20 @@ from pydantic import Field, ConfigDict
 
 def _load_env_file():
     """Load environment variables from .env.local file."""
-    env_path = Path("/app/.env.local")
-    if env_path.exists():
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, _, value = line.partition("=")
-                    if key and value:
-                        os.environ.setdefault(key.strip(), value.strip())
+    candidates = [
+        Path(".env.local"),        # local dev (cwd)
+        Path("/app/.env.local"),   # Docker container
+    ]
+    for env_path in candidates:
+        if env_path.exists():
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, _, value = line.partition("=")
+                        if key and value:
+                            os.environ.setdefault(key.strip(), value.strip())
+            break
 
 
 _load_env_file()
@@ -40,8 +45,8 @@ class SandboxConfig(BaseSettings):
     
     # ==================== Docker Settings ====================
     docker_host: str = Field(
-        default="unix:///var/run/docker.sock",
-        description="Docker daemon connection string"
+        default="unix:///run/user/1000/podman/podman.sock",
+        description="Container runtime socket (Podman rootless)"
     )
     
     opencode_image: str = Field(
@@ -82,7 +87,7 @@ class SandboxConfig(BaseSettings):
     
     # ==================== Git / VCS ====================
     git_provider_url: str = Field(
-        default="http://host.docker.internal:8080",
+        default="http://192.168.1.145:8080",
         description="GitLab/GitHub instance URL - adjust for your environment"
     )
     

@@ -9,7 +9,7 @@ from unittest.mock import patch
 def mock_env_vars():
     """Mock environment variables to prevent loading from .env.local."""
     with patch.dict(os.environ, {
-        'PHIXR_SANDBOX_DOCKER_HOST': 'unix:///var/run/docker.sock',
+        'PHIXR_SANDBOX_DOCKER_HOST': 'unix:///run/user/1000/podman/podman.sock',
         'PHIXR_SANDBOX_OPENCODE_IMAGE': 'ghcr.io/phixr/opencode:latest',
         'PHIXR_SANDBOX_DOCKER_NETWORK': 'phixr-network',
     }, clear=False):

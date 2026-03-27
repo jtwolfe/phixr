@@ -11,7 +11,7 @@ class TestSandboxConfig:
         """Test creating config with default values."""
         config = SandboxConfig()
         
-        assert config.docker_host == "unix:///var/run/docker.sock"
+        assert config.docker_host == "unix:///run/user/1000/podman/podman.sock"
         assert config.timeout_minutes == 30
         assert config.max_sessions == 10
         assert config.memory_limit == "2g"
@@ -92,7 +92,7 @@ class TestSandboxConfig:
         """Test helper function to get config."""
         config = get_sandbox_config()
         assert isinstance(config, SandboxConfig)
-        assert config.docker_host == "unix:///var/run/docker.sock"
+        assert config.docker_host == "unix:///run/user/1000/podman/podman.sock"
     
     def test_config_security_defaults(self):
         """Test security configuration defaults."""

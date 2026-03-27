@@ -22,7 +22,6 @@ RUN chmod +x /usr/local/bin/setup-gitlab-cert.sh
 
 # Copy application code
 COPY phixr/ ./phixr/
-COPY DESIGN.md PHASE_1_PLAN.md ./
 
 # Expose port
 EXPOSE 8000

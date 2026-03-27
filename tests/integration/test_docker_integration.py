@@ -1,10 +1,18 @@
 """Integration tests for Docker client and container manager.
 
 These tests require Docker to be running and are marked as integration tests.
+Run with: pytest -m docker tests/integration/
 """
 
+import os
 import pytest
 import logging
+
+# Skip entire module unless PHIXR_RUN_DOCKER_TESTS=1 is set
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("PHIXR_RUN_DOCKER_TESTS"),
+    reason="Docker integration tests skipped (set PHIXR_RUN_DOCKER_TESTS=1 to run)"
+)
 from unittest.mock import Mock, patch, MagicMock
 
 from phixr.sandbox.docker_client import DockerClientWrapper
@@ -25,7 +33,7 @@ class TestDockerClientWrapper:
     def config(self):
         """Create test configuration."""
         return SandboxConfig(
-            docker_host="unix:///var/run/docker.sock",
+            docker_host="unix:///run/user/1000/podman/podman.sock",
             opencode_image="alpine:latest",  # Use light image for testing
             docker_network="phixr-test-network",
         )
@@ -113,7 +121,7 @@ class TestContainerManager:
     def config(self):
         """Create test configuration."""
         config = SandboxConfig(
-            docker_host="unix:///var/run/docker.sock",
+            docker_host="unix:///run/user/1000/podman/podman.sock",
             opencode_image="alpine:latest",
             timeout_minutes=1,
             max_sessions=5,
@@ -250,7 +258,7 @@ class TestOpenCodeBridge:
     def config(self):
         """Create test configuration."""
         config = SandboxConfig(
-            docker_host="unix:///var/run/docker.sock",
+            docker_host="unix:///run/user/1000/podman/podman.sock",
             opencode_image="alpine:latest",
         )
         return config
@@ -287,7 +295,7 @@ class TestEndToEnd:
     def config(self):
         """Create test configuration."""
         return SandboxConfig(
-            docker_host="unix:///var/run/docker.sock",
+            docker_host="unix:///run/user/1000/podman/podman.sock",
             opencode_image="alpine:latest",
             timeout_minutes=2,
         )

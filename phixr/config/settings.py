@@ -7,15 +7,20 @@ from pathlib import Path
 
 def load_env_file():
     """Load environment variables from .env.local file."""
-    env_path = Path("/app/.env.local")
-    if env_path.exists():
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, _, value = line.partition("=")
-                    if key and value:
-                        os.environ.setdefault(key.strip(), value.strip())
+    candidates = [
+        Path(".env.local"),        # local dev (cwd)
+        Path("/app/.env.local"),   # Docker container
+    ]
+    for env_path in candidates:
+        if env_path.exists():
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, _, value = line.partition("=")
+                        if key and value:
+                            os.environ.setdefault(key.strip(), value.strip())
+            break
 
 
 load_env_file()
@@ -33,7 +38,7 @@ class Settings(BaseSettings):
     # These should be configured via environment variables for deployment
     
     # GitLab Configuration
-    gitlab_url: str = "http://localhost:8080"
+    gitlab_url: str = "http://192.168.1.145:8080"
     gitlab_root_password: str = ""
     gitlab_bot_token: str = ""
     gitlab_root_token: str = ""
@@ -70,7 +75,7 @@ class Settings(BaseSettings):
     opencode_zen_api_key: str = ""
     
     # Phase 2: Sandbox Configuration
-    phixr_sandbox_docker_host: str = "unix:///var/run/docker.sock"
+    phixr_sandbox_docker_host: str = "unix:///run/user/1000/podman/podman.sock"
     phixr_sandbox_opencode_image: str = "phixr-opencode:latest"
     phixr_sandbox_docker_network: str = "phixr-network"
     phixr_sandbox_memory_limit: str = "2g"

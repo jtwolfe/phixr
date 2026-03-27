@@ -272,7 +272,9 @@ class GitLabClient:
                 'scopes': scopes
             }
             # Run in thread pool since http_post might be blocking
-            response = await asyncio.get_event_loop().run_in_executor(None, self.gl.http_post, url, data)
+            response = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: self.gl.http_post(url, post_data=data)
+            )
             logger.info(f"Created PAT for user {user_id}: {name}")
             return response
         except Exception as e:
