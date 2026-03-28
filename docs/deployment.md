@@ -34,7 +34,7 @@ GitLab Webhooks --------> |   Phixr Bot     | ------> GitLab API
 ### Start All Services
 
 ```bash
-podman compose --profile phase-2 up -d
+podman compose --profile full-stack up -d
 ```
 
 This starts:
@@ -55,7 +55,7 @@ All services should show "Up" with opencode-server and redis showing "(healthy)"
 
 ```bash
 # All services
-podman compose --profile phase-2 logs -f
+podman compose --profile full-stack logs -f
 
 # Specific service
 podman logs -f phixr_phixr_1
@@ -64,14 +64,14 @@ podman logs -f phixr_phixr_1
 ### Stop
 
 ```bash
-podman compose --profile phase-2 down
+podman compose --profile full-stack down
 ```
 
 ### Rebuild After Code Changes
 
 ```bash
-podman compose --profile phase-2 build
-podman compose --profile phase-2 up -d
+podman compose --profile full-stack build
+podman compose --profile full-stack up -d
 ```
 
 ## Custom Domain Setup

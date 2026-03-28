@@ -1,151 +1,157 @@
 #!/usr/bin/env python3
 """
-Interactive script to help you manually generate a root PAT token,
-then use it to create the bot user and bot token.
+Create the Phixr bot user in GitLab using a root/admin personal access token.
+
+Reads GITLAB_URL from .env.local if available. Prompts for the root token interactively.
+
+Usage:
+    python scripts/setup_bot_user.py
+    python scripts/setup_bot_user.py --gitlab-url http://gitlab.example.com:8080
 """
-import click
-import requests
+import os
 import secrets
 import time
+from pathlib import Path
+
+import click
+import httpx as requests
+
+
+def _load_env_local():
+    """Load values from .env.local into environment (without overwriting)."""
+    for path in [Path(".env.local"), Path("/app/.env.local")]:
+        if path.exists():
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, _, value = line.partition("=")
+                        if key and value:
+                            os.environ.setdefault(key.strip(), value.strip())
+            break
+
+
+_load_env_local()
+
 
 @click.command()
-@click.option('--gitlab-url', default='http://localhost:8080', help='GitLab instance URL')
-@click.option('--root-token', prompt='Paste your root personal access token here', 
-              hide_input=True, help='Root PAT token from GitLab')
+@click.option('--gitlab-url',
+              default=lambda: os.environ.get('GITLAB_URL', 'http://localhost:8080'),
+              help='GitLab instance URL (reads from .env.local if set)')
+@click.option('--root-token',
+              default=lambda: os.environ.get('GITLAB_ROOT_TOKEN', ''),
+              prompt='GitLab root/admin personal access token',
+              hide_input=True,
+              help='Root PAT token from GitLab')
 @click.option('--bot-username', default='phixr', help='Bot username')
 @click.option('--bot-email', default='phixr@localhost', help='Bot email')
 def setup_bot(gitlab_url: str, root_token: str, bot_username: str, bot_email: str):
+    """Create the Phixr bot user in GitLab.
+
+    Requires a root/admin personal access token. To create one:
+
+    \b
+    1. Log into GitLab as admin
+    2. Go to /-/profile/personal_access_tokens
+    3. Name: "phixr-setup", Scopes: api + admin
+    4. Create and copy the token
     """
-    Set up Phixr bot user using a root PAT token.
-    
-    To generate the root PAT token:
-    1. Go to http://localhost:8080
-    2. Login with username 'root' and your password
-    3. Click your profile icon (top-right)
-    4. Select "Edit profile"
-    5. Go to "Access tokens" or visit /-/profile/personal_access_tokens
-    6. Click "Add new token"
-    7. Name: "phixr-root-token"
-    8. Scopes: Check all (or at least: api, read_api, write_repository, admin)
-    9. Expiration: Leave empty
-    10. Click "Create personal access token"
-    11. Copy the token and paste it when prompted
-    """
-    
-    click.echo("\n" + "="*60)
-    click.echo("🚀 Phixr Bot Setup (via Root PAT Token)")
-    click.echo("="*60)
-    click.echo(f"GitLab URL: {gitlab_url}")
-    click.echo(f"Bot username: {bot_username}\n")
-    
-    # Step 1: Verify root token works
-    click.echo("Step 1: Verifying root token...")
+    gitlab_url = gitlab_url.rstrip("/")
+
+    click.echo(f"\nPhixr Bot Setup")
+    click.echo(f"===============")
+    click.echo(f"GitLab:   {gitlab_url}")
+    click.echo(f"Bot user: {bot_username}\n")
+
+    # Step 1: Verify root token
+    click.echo("Verifying admin token...")
     try:
-        response = requests.get(
+        resp = requests.get(
             f"{gitlab_url}/api/v4/user",
             headers={"PRIVATE-TOKEN": root_token},
-            timeout=5
+            timeout=10
         )
-        
-        if response.status_code == 200:
-            user = response.json()
-            click.echo(f"✓ Authenticated as: {user['username']} (ID: {user['id']})")
-        else:
-            click.echo(f"✗ Token verification failed: {response.status_code}")
-            click.echo(f"  Response: {response.text[:200]}")
-            click.echo("\n💡 Make sure you've created a root PAT token in GitLab")
+        if resp.status_code != 200:
+            click.echo(f"Error: token verification failed ({resp.status_code})")
+            click.echo("Make sure you're using a root/admin personal access token.")
             return
-            
-    except Exception as e:
-        click.echo(f"✗ Error: {e}")
+        user = resp.json()
+        click.echo(f"  Authenticated as: {user['username']} (ID: {user['id']})")
+    except requests.ConnectError:
+        click.echo(f"Error: cannot connect to {gitlab_url}")
         return
-    
-    # Step 2: Create bot user
-    click.echo("\nStep 2: Creating bot user...")
-    
+    except Exception as e:
+        click.echo(f"Error: {e}")
+        return
+
+    # Step 2: Create or find bot user
+    click.echo(f"\nCreating bot user '{bot_username}'...")
     try:
-        # Check if user exists
-        response = requests.get(
+        resp = requests.get(
             f"{gitlab_url}/api/v4/users",
             headers={"PRIVATE-TOKEN": root_token},
             params={"username": bot_username},
-            timeout=5
+            timeout=10
         )
-        
-        if response.status_code == 200 and response.json():
-            click.echo(f"✓ User '{bot_username}' already exists")
-            bot_user_id = response.json()[0]['id']
+        if resp.status_code == 200 and resp.json():
+            bot_user_id = resp.json()[0]['id']
+            click.echo(f"  User already exists (ID: {bot_user_id})")
         else:
-            # Create new user
-            user_data = {
-                'username': bot_username,
-                'email': bot_email,
-                'name': 'Phixr Bot',
-                'password': secrets.token_urlsafe(32)
-            }
-            
-            response = requests.post(
+            resp = requests.post(
                 f"{gitlab_url}/api/v4/users",
                 headers={"PRIVATE-TOKEN": root_token},
-                json=user_data,
-                timeout=5
+                json={
+                    'username': bot_username,
+                    'email': bot_email,
+                    'name': 'Phixr',
+                    'password': secrets.token_urlsafe(32),
+                },
+                timeout=10
             )
-            
-            if response.status_code == 201:
-                bot_user = response.json()
-                bot_user_id = bot_user['id']
-                click.echo(f"✓ Created bot user with ID: {bot_user_id}")
+            if resp.status_code == 201:
+                bot_user_id = resp.json()['id']
+                click.echo(f"  Created user (ID: {bot_user_id})")
             else:
-                click.echo(f"✗ Failed to create user: {response.status_code}")
-                click.echo(f"  Response: {response.text[:300]}")
+                click.echo(f"  Error creating user: {resp.status_code}")
+                click.echo(f"  {resp.text[:300]}")
                 return
-        
+
         # Step 3: Create bot PAT
-        click.echo(f"\nStep 3: Creating bot PAT token...")
-        
-        # Small delay to ensure user is ready
+        click.echo(f"\nCreating personal access token...")
         time.sleep(1)
-        
-        bot_token_data = {
-            'name': 'phixr-token',
-            'scopes': ['api', 'read_api', 'write_repository'],
-            'expires_at': None
-        }
-        
-        response = requests.post(
+
+        resp = requests.post(
             f"{gitlab_url}/api/v4/users/{bot_user_id}/personal_access_tokens",
             headers={"PRIVATE-TOKEN": root_token},
-            json=bot_token_data,
-            timeout=5
+            json={
+                'name': 'phixr-token',
+                'scopes': ['api', 'read_api', 'write_repository'],
+                'expires_at': None,
+            },
+            timeout=10
         )
-        
-        if response.status_code == 201:
-            bot_token_obj = response.json()
-            bot_token = bot_token_obj['token']
-            click.echo(f"✓ Created bot PAT token")
+        if resp.status_code == 201:
+            bot_token = resp.json()['token']
+            click.echo(f"  Token created")
         else:
-            click.echo(f"✗ Failed to create PAT: {response.status_code}")
-            click.echo(f"  Response: {response.text[:300]}")
+            click.echo(f"  Error creating token: {resp.status_code}")
+            click.echo(f"  {resp.text[:300]}")
             return
-        
-        # Display results
-        click.echo("\n" + "="*60)
-        click.echo("✅ Phixr bot setup completed!")
-        click.echo("="*60)
-        click.echo(f"\nBot Configuration:")
-        click.echo(f"  Username: {bot_username}")
-        click.echo(f"  Email: {bot_email}")
-        click.echo(f"  User ID: {bot_user_id}")
-        click.echo(f"  Token: {bot_token}")
-        click.echo(f"\n📝 Add to your .env.local file:")
+
+        # Done
+        click.echo(f"\n{'=' * 50}")
+        click.echo(f"Bot setup complete!")
+        click.echo(f"{'=' * 50}")
+        click.echo(f"\nAdd to your .env.local:")
         click.echo(f"  GITLAB_BOT_TOKEN={bot_token}")
-        click.echo(f"  GITLAB_URL={gitlab_url}")
-        click.echo("\n🚀 Next step: Run the bot")
+        click.echo(f"  PHIXR_SANDBOX_GIT_PROVIDER_TOKEN={bot_token}")
+        click.echo(f"\nThen start Phixr:")
         click.echo(f"  python -m phixr.main")
-        click.echo("="*60 + "\n")
-        
-    except requests.exceptions.RequestException as e:
-        click.echo(f"✗ API Error: {e}")
+        click.echo()
+
+    except requests.HTTPError as e:
+        click.echo(f"API error: {e}")
+
 
 if __name__ == '__main__':
     setup_bot()

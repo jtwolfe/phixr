@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # These should be configured via environment variables for deployment
     
     # GitLab Configuration
-    gitlab_url: str = "http://192.168.1.145:8080"
+    gitlab_url: str = "http://localhost:8080"
     gitlab_root_password: str = ""
     gitlab_bot_token: str = ""
     gitlab_root_token: str = ""
@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     
     # Logging
-    log_level: str = "DEBUG"
+    log_level: str = "INFO"
 
 
 settings = Settings()

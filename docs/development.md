@@ -36,7 +36,7 @@ This starts Phixr on `http://localhost:8000`. Redis is optional -- the session s
 **With containers** (full stack):
 
 ```bash
-podman compose --profile phase-2 up -d
+podman compose --profile full-stack up -d
 ```
 
 ## Running Tests
@@ -152,7 +152,7 @@ messages = await client.get_messages(session_id)
 ## Building the Docker Image
 
 ```bash
-podman compose --profile phase-2 build
+podman compose --profile full-stack build
 ```
 
 The Dockerfile is at `docker/Dockerfile`. It uses `python:3.11-slim` and installs from `requirements.txt`.

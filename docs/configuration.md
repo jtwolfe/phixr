@@ -113,7 +113,7 @@ PHIXR_SANDBOX_PROVIDER_BASE_URL=https://api.openai.com/v1
 
 ## Docker Compose Environment
 
-When running with `podman compose --profile phase-2`, the `docker-compose.yml` overrides these values for the container network:
+When running with `podman compose --profile full-stack`, the `docker-compose.yml` overrides these values for the container network:
 
 | Variable | Container Override | Why |
 |----------|-------------------|-----|

@@ -48,7 +48,7 @@ pytest tests/unit/test_command_parser.py::TestCommandParser -v
 pytest --cov=phixr --cov-report=html
 
 # Run with Podman Compose
-podman compose up
+podman compose --profile full-stack up -d
 ```
 
 ## Architecture
@@ -119,7 +119,7 @@ Copy `.env.example` to `.env.local` before running locally.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GITLAB_URL` | `http://192.168.1.145:8080` | GitLab instance |
+| `GITLAB_URL` | `http://localhost:8080` | GitLab instance |
 | `GITLAB_BOT_TOKEN` | -- | Bot user PAT |
 | `WEBHOOK_SECRET` | -- | Webhook validation |
 | `PHIXR_SANDBOX_OPENCODE_SERVER_URL` | `http://localhost:4096` | OpenCode server |

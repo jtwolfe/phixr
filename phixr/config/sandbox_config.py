@@ -94,7 +94,7 @@ class SandboxConfig(BaseSettings):
     
     # ==================== Git / VCS ====================
     git_provider_url: str = Field(
-        default="http://192.168.1.145:8080",
+        default="http://localhost:8080",
         description="GitLab/GitHub instance URL - adjust for your environment"
     )
     

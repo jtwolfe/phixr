@@ -12,7 +12,7 @@ httpx-sse>=0.4.0
 aiofiles==23.2.1
 click==8.1.7
 
-# Phase 2: Docker and sandbox execution
+# Container management
 docker>=7.0.0
 websockets>=12.0
 
