@@ -49,3 +49,4 @@ The AI reads the issue, clones the repo, creates a working branch, and handles e
 - [Architecture](architecture) -- how it all fits together
 - [Development](development) -- contributing and local development
 - [Configuration Reference](configuration) -- all environment variables
+- [Roadmap](roadmap) -- planned features and project direction

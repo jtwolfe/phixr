@@ -16,7 +16,7 @@ Get Phixr running and connected to your GitLab instance in about 10 minutes.
 ## 1. Clone and Configure
 
 ```bash
-git clone https://github.com/your-org/phixr.git
+git clone https://github.com/jtwolfe/phixr.git
 cd phixr
 cp .env.example .env.local
 ```
@@ -38,7 +38,7 @@ If you don't have a bot user yet:
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-python scripts/setup_bot_user.py --gitlab-url http://your-gitlab-instance:8080
+python scripts/setup_bot_user.py --gitlab-url http://gitlab.example.com
 ```
 
 The script creates the `phixr` user and outputs a personal access token. Add it to your `.env.local` as `GITLAB_BOT_TOKEN`.

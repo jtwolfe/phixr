@@ -35,14 +35,14 @@ Phixr:      Session closed.
 ## Quick Start
 
 ```bash
-git clone https://github.com/your-org/phixr.git && cd phixr
+git clone https://github.com/jtwolfe/phixr.git && cd phixr
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env.local   # edit with your GitLab URL, tokens, etc.
 python -m phixr.main
 ```
 
-For full setup instructions including GitLab webhook configuration, see the [Getting Started guide](https://your-org.github.io/phixr/getting-started/).
+For full setup instructions including GitLab webhook configuration, see the [documentation](https://jtwolfe.github.io/phixr/).
 
 ## AI Providers
 
@@ -50,24 +50,36 @@ Phixr works with any OpenAI-compatible provider. Configure via environment varia
 
 ```bash
 # Ollama (default, local)
-OPENCODE_PROVIDER=ollama
-OPENCODE_MODEL=qwen2.5-coder:32b
+PHIXR_SANDBOX_PROVIDER=ollama
+PHIXR_SANDBOX_MODEL=qwen2.5-coder
+PHIXR_SANDBOX_PROVIDER_BASE_URL=http://localhost:11434
 
 # Zen
-OPENCODE_PROVIDER=zen
-OPENCODE_API_KEY=your-zen-key
-OPENCODE_MODEL=anthropic/claude-sonnet-4-20250514
+PHIXR_SANDBOX_PROVIDER=zen
+PHIXR_SANDBOX_MODEL=big-pickle
+PHIXR_SANDBOX_PROVIDER_API_KEY=your-zen-key
 
 # OpenAI
-OPENCODE_PROVIDER=openai
-OPENCODE_API_KEY=your-openai-key
-OPENCODE_MODEL=gpt-4o
+PHIXR_SANDBOX_PROVIDER=openai
+PHIXR_SANDBOX_MODEL=gpt-4o
+PHIXR_SANDBOX_PROVIDER_API_KEY=your-openai-key
+PHIXR_SANDBOX_PROVIDER_BASE_URL=https://api.openai.com/v1
 ```
+
+## Roadmap
+
+- **LiteLLM inference** -- unified multi-provider routing with cost tracking and rate limiting
+- **GitLab JWT auth** -- user identity, project-level permissions, and audit trails
+- **Gitea support** -- extend beyond GitLab to Gitea-hosted repositories
+- **Session history** -- PostgreSQL-backed logs for review and replay
+- **MR workflows** -- AI-assisted code review on merge request comments
+
+See the full [Roadmap](https://jtwolfe.github.io/phixr/roadmap) for details.
 
 ## Documentation
 
-Full documentation at [https://your-org.github.io/phixr/](https://your-org.github.io/phixr/)
+Full documentation at [jtwolfe.github.io/phixr](https://jtwolfe.github.io/phixr/)
 
 ## License
 
-License: TBD
+MIT

@@ -11,7 +11,7 @@ All configuration is via environment variables. Copy `.env.example` to `.env.loc
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GITLAB_URL` | `http://192.168.1.145:8080` | Your GitLab instance URL |
+| `GITLAB_URL` | `http://gitlab.example.com` | Your GitLab instance URL |
 | `GITLAB_BOT_TOKEN` | *(required)* | Personal access token for the bot user |
 | `GITLAB_ROOT_TOKEN` | *(optional)* | Root token for access management (PAT rotation, user creation) |
 | `BOT_USERNAME` | `phixr` | GitLab username of the bot account |
@@ -44,13 +44,12 @@ These use the `PHIXR_SANDBOX_` prefix.
 |----------|---------|-------------|
 | `PHIXR_SANDBOX_OPENCODE_SERVER_URL` | `http://opencode-server:4096` | Internal OpenCode API URL |
 | `PHIXR_SANDBOX_OPENCODE_PUBLIC_URL` | *(empty -- falls back to server URL)* | Public URL for session links in GitLab comments. **Set this in production** when the server URL is a Docker-internal hostname. |
-| `PHIXR_SANDBOX_OPENCODE_ZEN_API_KEY` | *(empty)* | API key for OpenCode Zen model provider |
 
 ### Git Provider
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PHIXR_SANDBOX_GIT_PROVIDER_URL` | `http://192.168.1.145:8080` | Git provider URL |
+| `PHIXR_SANDBOX_GIT_PROVIDER_URL` | *(same as GITLAB_URL)* | Git provider URL |
 | `PHIXR_SANDBOX_GIT_PROVIDER_TOKEN` | *(empty)* | Token for cloning private repositories |
 | `PHIXR_SANDBOX_GIT_PROVIDER_TYPE` | `gitlab` | Git provider type (`gitlab`, `github`, `gitea`) |
 
@@ -128,7 +127,7 @@ All other values (tokens, secrets, GitLab URL) are read from `.env.local` withou
 
 ```bash
 # GitLab
-GITLAB_URL=http://192.168.1.145:8080
+GITLAB_URL=http://gitlab.example.com
 GITLAB_BOT_TOKEN=glpat-your-token-here
 GITLAB_ROOT_TOKEN=glpat-your-root-token-here
 WEBHOOK_SECRET=a-strong-random-secret

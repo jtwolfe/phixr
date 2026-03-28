@@ -8,7 +8,7 @@ title: Development
 ## Local Setup
 
 ```bash
-git clone https://github.com/your-org/phixr.git
+git clone https://github.com/jtwolfe/phixr.git
 cd phixr
 python -m venv venv
 source venv/bin/activate
