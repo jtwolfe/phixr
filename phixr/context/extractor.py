@@ -11,10 +11,24 @@ logger = logging.getLogger(__name__)
 
 class ContextExtractor:
     """Extracts and structures issue context."""
-    
+
+    @staticmethod
+    def _correct_gitlab_url(url: str) -> str:
+        """Replace gitlab.local hostname with the configured GitLab URL if needed."""
+        if not url or 'gitlab.local' not in url:
+            return url
+        from phixr.config.settings import settings
+        configured_url = settings.gitlab_url
+        if 'gitlab.local' not in configured_url and '://' in configured_url:
+            host = configured_url.split('://', 1)[1].split('/', 1)[0]
+            corrected = url.replace('gitlab.local', host)
+            logger.info(f"Corrected gitlab.local URL: {corrected}")
+            return corrected
+        return url
+
     def __init__(self, gitlab_client: GitLabClient):
         """Initialize context extractor.
-        
+
         Args:
             gitlab_client: GitLab API client instance
         """
@@ -46,23 +60,7 @@ class ContextExtractor:
             repo_name = project_data.get('name', '')
             logger.info(f"Extracted repository URL: {repo_url}")
             logger.info(f"Project name: {repo_name}")
-
-            # If the repo URL contains a hostname that might not be accessible from the container,
-            # try to replace it with the configured GitLab URL
-            if repo_url and '://' in repo_url:
-                from phixr.config.settings import settings
-                configured_url = settings.gitlab_url
-                logger.debug(f"Configured GitLab URL: {configured_url}")
-
-                # If the repo URL uses gitlab.local but we're configured for a different host, correct it
-                if 'gitlab.local' in repo_url and 'gitlab.local' not in configured_url:
-                    logger.warning(f"Repository URL uses gitlab.local but configured URL is {configured_url}")
-                    # Replace gitlab.local with the correct hostname and port
-                    if '://' in configured_url:
-                        correct_host_part = configured_url.split('://', 1)[1].split('/', 1)[0]  # e.g., "172.17.0.1:8080"
-                        corrected_url = repo_url.replace('gitlab.local', correct_host_part)
-                        logger.info(f"Corrected repository URL: {corrected_url}")
-                        repo_url = corrected_url
+            repo_url = self._correct_gitlab_url(repo_url)
 
         # Get issue notes/comments
         comments = self.gitlab_client.get_issue_notes(project_id, issue_id)
@@ -92,7 +90,7 @@ class ContextExtractor:
             project_id=project_id,
             title=issue_data['title'],
             description=issue_data['description'] or '',
-            url=issue_data['url'],
+            url=self._correct_gitlab_url(issue_data['url']),
             assignees=issue_data['assignees'],
             labels=issue_data['labels'],
             milestone=issue_data['milestone'],

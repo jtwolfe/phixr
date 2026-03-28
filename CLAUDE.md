@@ -4,11 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Does
 
-Phixr is a GitLab-integrated AI coding platform that bridges GitLab's workflow with OpenCode's web UI. It runs as a FastAPI bot that listens for GitLab webhooks and responds to `@phixr` mentions or `/ai-*` slash commands in issue comments.
+Phixr seamlessly bridges GitLab's issue workflow with OpenCode's AI coding sessions. It runs as a FastAPI bot that listens for GitLab webhooks and responds to `@phixr-bot` mentions in issue comments.
+
+**Core concept:** GitLab issues are OpenCode sessions. Comments are messages. Three commands total.
 
 Two operating modes:
-- **Independent Mode**: Comment-driven automation — AI creates branches, implements changes, commits, and opens MRs autonomously
-- **Vibe Mode**: Shared-visibility collaborative sessions — multiple users observe the same OpenCode session in real-time
+- **Independent Mode**: Comment-driven — AI works autonomously, posts results back to the issue
+- **Vibe Mode**: `@phixr-bot /session --vibe` — returns a live OpenCode UI link for interactive use
+
+## User Interaction
+
+| Input | What Happens |
+|-------|-------------|
+| `@phixr-bot /session` | Start a persistent session (one per issue) |
+| `@phixr-bot /session --vibe` | Start session + get live OpenCode UI link |
+| `@phixr-bot <any message>` | Forward to active session |
+| `@phixr-bot /end` | Close session |
+
+No mode selection — the AI reads the issue and figures out what to do.
 
 ## Commands
 
@@ -48,34 +61,31 @@ podman compose --profile phase-2 up
 `phixr/main.py` — FastAPI app. On startup, initializes GitLab client, registers webhook routes, and sets up OpenCode integration.
 
 ```
-GitLab Issue Comment
+GitLab Issue Comment (@phixr-bot ...)
   → POST /webhooks/gitlab
-  → WebhookValidator (HMAC signature check)
+  → WebhookValidator (token check)
   → CommentHandler.handle_issue_comment()
-  → CommandParser (recognizes /ai-* commands and @phixr-bot mentions)
-  → Context extraction (GitLab issue details, repo state)
-  → OpenCodeIntegrationService.create_session()
-    → Creates session on OpenCode server via HTTP API
-    → Sends prompt with issue context via prompt_async
-    → Creates vibe room for shared visibility
+  → CommandParser.parse()
+    ├── /session [--vibe]  → create OpenCode session, start monitoring
+    ├── /end               → stop session, clean up
+    └── <message>          → forward to active session via send_followup()
   → monitor_session() (background task)
-    → SSE event stream from OpenCode server
-    → Auto-approves tool permissions
-    → Detects completion (session goes idle)
-    → Posts results back to GitLab as comment
+    → SSE event stream from OpenCode
+    → Auto-approves permissions and questions
+    → Detects idle → posts results to GitLab
 ```
 
 ### Key Modules
 
 | Module | Responsibility |
 |--------|---------------|
-| `phixr/handlers/comment_handler.py` | Webhook event handlers — routes `/ai-*` commands |
-| `phixr/commands/parser.py` | Parses natural language and `/ai-*` slash commands |
-| `phixr/integration/opencode_integration_service.py` | Orchestrates OpenCode sessions, SSE monitoring, GitLab reporting |
+| `phixr/handlers/comment_handler.py` | Routes `@phixr-bot` interactions: session start, message forward, session end |
+| `phixr/commands/parser.py` | Parses `/session`, `/end`, and bare `@phixr-bot` messages |
+| `phixr/integration/opencode_integration_service.py` | Orchestrates sessions, forwards messages, monitors completion, reports to GitLab |
 | `phixr/bridge/opencode_client.py` | Async HTTP + SSE client for OpenCode's REST API |
 | `phixr/git/branch_manager.py` | Creates `ai-work/issue-{id}` branches, checks for existing MRs |
 | `phixr/context/` | Extracts issue details from GitLab |
-| `phixr/collaboration/vibe_room_manager.py` | Vibe room state management for multi-user sessions |
+| `phixr/collaboration/vibe_room_manager.py` | Vibe room state management |
 | `phixr/config/settings.py` | Pydantic settings loaded from environment |
 | `phixr/webhooks/` | Webhook routing and validation |
 
@@ -83,13 +93,15 @@ GitLab Issue Comment
 
 Phixr communicates with OpenCode via its HTTP API (default port 4096):
 
-- **Session CRUD**: `POST/GET/DELETE /session/`
+- **Session CRUD**: `POST/GET/DELETE /session` (no trailing slashes)
 - **Async prompts**: `POST /session/{id}/prompt_async` (fire-and-forget, returns 204)
 - **SSE events**: `GET /event` (real-time: message updates, tool execution, permission requests)
 - **Permissions**: `POST /permission/{id}/reply` (auto-approve tool execution)
+- **Questions**: `POST /question/{id}/reply` (auto-answer with first option)
 - **Messages**: `GET /session/{id}/message` (retrieve conversation history)
+- **Status**: `GET /session/status` (idle = absent from dict)
 
-Context is injected via the `system` field in prompt requests (custom system instructions per-message).
+Context is injected via the `system` field in prompt requests.
 
 ### Session Model
 
@@ -97,11 +109,12 @@ Context is injected via the `system` field in prompt requests (custom system ins
 Session(
     id="sess-{issue_id}-{timestamp}",
     branch="ai-work/issue-{id}",
-    container_id=opencode_session_id,  # maps to OpenCode session
-    status=SessionStatus,
-    mode=ExecutionMode,  # BUILD / PLAN / REVIEW
+    container_id=opencode_session_id,
+    status=SessionStatus,  # RUNNING, COMPLETED, TIMEOUT, ERROR, STOPPED
 )
 ```
+
+One session per issue enforced via `issue_sessions` dict in the integration service.
 
 ## Key Environment Variables
 
@@ -111,11 +124,10 @@ Copy `.env.example` to `.env.local` before running locally.
 |----------|---------|---------|
 | `GITLAB_URL` | `http://192.168.1.145:8080` | GitLab instance |
 | `GITLAB_BOT_TOKEN` | — | Bot user PAT |
-| `WEBHOOK_SECRET` | — | HMAC webhook validation |
-| `OPENCODE_SERVER_URL` | `http://localhost:4096` | OpenCode server |
+| `WEBHOOK_SECRET` | — | Webhook validation |
+| `PHIXR_SANDBOX_OPENCODE_SERVER_URL` | `http://localhost:4096` | OpenCode server |
+| `PHIXR_SANDBOX_GIT_PROVIDER_TOKEN` | — | Git token for repo cloning |
 | `PHIXR_API_URL` | — | Public URL for vibe room links |
-| `POSTGRES_URL` | — | Optional PostgreSQL |
-| `REDIS_URL` | — | Optional Redis |
 
 ## Test Configuration
 
@@ -127,4 +139,3 @@ Primary references for design intent and requirements:
 - `docs/PROJECT_GOALS.md` — current vision and feature requirements
 - `docs/ARCHITECTURE.md` — technical architecture details
 - `docs/GETTING_STARTED.md` — setup and installation guide
-- OpenCode source: `opencodecode/` — full source for understanding the API surface

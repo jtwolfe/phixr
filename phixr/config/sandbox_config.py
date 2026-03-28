@@ -37,6 +37,13 @@ class SandboxConfig(BaseSettings):
         description="OpenCode HTTP API server URL (Phase 2) - use service name for Docker, localhost for dev"
     )
 
+    opencode_public_url: str = Field(
+        default="",
+        description="Public-facing OpenCode URL for session links in GitLab comments. "
+                    "If empty, falls back to opencode_server_url. "
+                    "Set this when the server URL is a Docker-internal hostname."
+    )
+
     # ==================== Phixr Web Interface ====================
     phixr_base_url: str = Field(
         default="http://localhost:8000",

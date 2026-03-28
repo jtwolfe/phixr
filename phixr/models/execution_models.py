@@ -19,10 +19,10 @@ class SessionStatus(str, Enum):
 
 
 class ExecutionMode(str, Enum):
-    """OpenCode execution modes."""
-    BUILD = "build"  # Full access, can make changes
-    PLAN = "plan"    # Read-only, analysis only
-    REVIEW = "review"  # Review existing code
+    """OpenCode execution modes (legacy — sessions now infer mode from context)."""
+    BUILD = "build"
+    PLAN = "plan"
+    REVIEW = "review"
 
 
 class SessionParticipant(BaseModel):
@@ -99,7 +99,7 @@ class Session(BaseModel):
     branch: str = Field(..., description="Git branch for work")
     container_id: Optional[str] = Field(None, description="Docker container ID")
     status: SessionStatus = Field(default=SessionStatus.CREATED)
-    mode: ExecutionMode = Field(default=ExecutionMode.BUILD)
+    mode: Optional[ExecutionMode] = Field(default=None)
     
     # Timing
     created_at: datetime = Field(default_factory=datetime.utcnow)

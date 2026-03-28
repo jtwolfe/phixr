@@ -1,0 +1,39 @@
+title: Phixr
+description: Seamless GitLab-AI Integration Platform
+url: ""
+baseurl: "/phixr"
+
+remote_theme: pages-themes/minimal@v0.2.0
+plugins:
+  - jekyll-remote-theme
+
+logo: /phixr/assets/phixr.jpg
+
+# Navigation (rendered by the theme or custom layout)
+nav:
+  - title: Home
+    url: /
+  - title: Quickstart
+    url: /quickstart
+  - title: Usage
+    url: /usage
+  - title: Deployment
+    url: /deployment
+  - title: Architecture
+    url: /architecture
+  - title: Development
+    url: /development
+  - title: Configuration
+    url: /configuration
+
+# Markdown processing
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+# Exclude non-doc files
+exclude:
+  - archive
+  - Gemfile
+  - Gemfile.lock

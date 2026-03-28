@@ -120,6 +120,7 @@ def _initialize_sandbox():
         opencode_integration = OpenCodeIntegrationService(
             config=sandbox_config,
             base_url=settings.phixr_api_url,
+            redis_url=settings.redis_url,
         )
         logger.info("  OpenCode integration service initialized")
 
@@ -317,18 +318,7 @@ async def get_vibe_room(request: Request, room_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Build OpenCode web UI URL for embedding
-    oc_session_id = integration.opencode_session_ids.get(session.id)
-    opencode_url = integration.config.opencode_server_url
-
-    if oc_session_id:
-        try:
-            oc_session = await integration.client.get_session(oc_session_id)
-            if oc_session:
-                slug = oc_session.get("slug")
-                if slug:
-                    opencode_url = f"{integration.config.opencode_server_url}/s/{slug}"
-        except Exception as e:
-            logger.warning(f"Could not get OpenCode session details: {e}")
+    opencode_url = integration.get_opencode_session_url(session.id) or integration.config.opencode_server_url
 
     return templates.TemplateResponse("vibe_room.html", {
         "request": request,

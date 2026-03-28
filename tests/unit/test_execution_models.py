@@ -23,7 +23,7 @@ class TestSessionModel:
         assert session.id == "sess-test123"
         assert session.issue_id == 456
         assert session.status == SessionStatus.CREATED
-        assert session.mode == ExecutionMode.BUILD
+        assert session.mode is None
         assert session.created_at is not None
         assert session.started_at is None
     

@@ -1,8 +1,9 @@
 services:
   opencode-server:
     image: node:20-slim
-    environment:
-      OPENCODE_ZEN_API_KEY: ${OPENCODE_ZEN_API_KEY:-}
+    env_file:
+      - path: .env.local
+        required: true
     command: >
       bash -c "
         npm install -g opencode-ai@latest &&
@@ -13,7 +14,7 @@ services:
     networks:
       - phixr-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "-s", "http://localhost:4096/global/health"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4096/global/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -35,33 +36,25 @@ services:
       - path: .env.local
         required: true
     environment:
-      # Core configuration
-      GITLAB_BOT_TOKEN: ${GITLAB_BOT_TOKEN:-}
-      GITLAB_ROOT_TOKEN: ${GITLAB_ROOT_TOKEN:-}
-      BOT_USERNAME: ${BOT_USERNAME:-phixr-bot}
-      BOT_EMAIL: ${BOT_EMAIL:-phixr-bot@localhost}
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      
-      # Server configuration
+      # Docker-network overrides (these override .env.local values)
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8000
-      
-      # Service URLs - configured for Docker network
-      GITLAB_URL: ${GITLAB_URL:-http://192.168.1.145:8080}
-      OPENCODE_SERVER_URL: ${OPENCODE_SERVER_URL:-http://opencode-server:4096}
-      PHIXR_API_URL: ${PHIXR_API_URL:-http://phixr-bot:8000}
-      WEBHOOK_URL: ${WEBHOOK_URL:-http://phixr-bot:8000/webhooks/gitlab}
-      
-      # Database and cache - using service names for Docker network
-      POSTGRES_URL: ${POSTGRES_URL:-postgresql://phixr:phixr@postgres:5432/phixr}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      
-      # Webhook security
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-phixr-webhook-secret}
+      OPENCODE_SERVER_URL: http://opencode-server:4096
+      PHIXR_API_URL: http://phixr-bot:8000
+      WEBHOOK_URL: http://phixr-bot:8000/webhooks/gitlab
+      REDIS_URL: redis://redis:6379/0
+      PHIXR_SANDBOX_OPENCODE_SERVER_URL: http://opencode-server:4096
+      PHIXR_SANDBOX_REDIS_URL: redis://redis:6379/1
+    depends_on:
+      opencode-server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - ./:/app
-      - ${XDG_RUNTIME_DIR:-/run/user/1000}/podman/podman.sock:/run/podman/podman.sock
+      - ./:/app:Z
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/podman/podman.sock:/run/podman/podman.sock:Z
+    profiles:
+      - phase-2
 
   postgres:
     image: postgres:15-alpine
@@ -75,15 +68,24 @@ services:
       - phixr-network
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    profiles:
+      - phase-2
 
   redis:
-    image: redis:7-alpine
+    image: docker.io/library/redis:7-alpine
     ports:
       - "6379:6379"
     networks:
       - phixr-network
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - phase-2
 
 volumes:
   postgres_data:
