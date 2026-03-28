@@ -82,4 +82,4 @@ Full documentation at [jtwolfe.github.io/phixr](https://jtwolfe.github.io/phixr/
 
 ## License
 
-MIT
+[AGPL-3.0](LICENSE)
