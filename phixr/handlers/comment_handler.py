@@ -148,7 +148,7 @@ class CommentHandler:
                 project_id, issue_id,
                 f"ℹ️ **Session already active**\n\n"
                 f"**Session ID:** `{existing.id}`{vibe_line}\n\n"
-                f"Send messages with `@phixr-bot <your message>` or close with `@phixr-bot /end`."
+                f"Send messages with `@phixr <your message>` or close with `@phixr /end`."
             )
             return
 
@@ -201,9 +201,9 @@ class CommentHandler:
                 f"**Session ID:** `{session.id}`\n"
                 f"**Branch:** `{session.branch}`"
                 f"{vibe_line}\n\n"
-                f"Send messages with `@phixr-bot <your message>`.\n"
+                f"Send messages with `@phixr <your message>`.\n"
                 f"Results will be posted here when complete.\n\n"
-                f"To close: `@phixr-bot /end`"
+                f"To close: `@phixr /end`"
             )
 
             # Start background monitoring
@@ -247,8 +247,8 @@ class CommentHandler:
                 # Bare @phixr mention with no active session — acknowledge
                 self.gitlab_client.add_issue_comment(
                     project_id, issue_id,
-                    "👋 **Phixr Bot** is ready! Start a session with `@phixr-bot /session` "
-                    "or `@phixr-bot /session --vibe` for a live coding UI."
+                    "👋 **Phixr Bot** is ready! Start a session with `@phixr /session` "
+                    "or `@phixr /session --vibe` for a live coding UI."
                 )
                 return
 
@@ -256,7 +256,7 @@ class CommentHandler:
             self.gitlab_client.add_issue_comment(
                 project_id, issue_id,
                 "ℹ️ No active session for this issue.\n\n"
-                "Start one with `@phixr-bot /session` and then send your message."
+                "Start one with `@phixr /session` and then send your message."
             )
             return
 
@@ -269,7 +269,7 @@ class CommentHandler:
             self.gitlab_client.add_issue_comment(
                 project_id, issue_id,
                 f"🤖 **Session Active:** `{session.id}`{vibe_line}\n\n"
-                f"Send messages with `@phixr-bot <your message>` or close with `@phixr-bot /end`."
+                f"Send messages with `@phixr <your message>` or close with `@phixr /end`."
             )
             return
 

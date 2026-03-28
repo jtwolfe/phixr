@@ -44,8 +44,8 @@ class Settings(BaseSettings):
     gitlab_root_token: str = ""
     
     # Bot Configuration
-    bot_username: str = "phixr-bot"
-    bot_email: str = "phixr-bot@localhost"
+    bot_username: str = "phixr"
+    bot_email: str = "phixr@localhost"
     
     # Server Configuration
     server_host: str = "0.0.0.0"
@@ -70,18 +70,6 @@ class Settings(BaseSettings):
     
     # Logging
     log_level: str = "DEBUG"
-    
-    # OpenCode Zen Configuration
-    opencode_zen_api_key: str = ""
-    
-    # Phase 2: Sandbox Configuration
-    phixr_sandbox_docker_host: str = "unix:///run/user/1000/podman/podman.sock"
-    phixr_sandbox_opencode_image: str = "phixr-opencode:latest"
-    phixr_sandbox_docker_network: str = "phixr-network"
-    phixr_sandbox_memory_limit: str = "2g"
-    phixr_sandbox_cpu_limit: float = 1.0
-    phixr_sandbox_timeout_minutes: int = 30
-    phixr_sandbox_max_sessions: int = 10
 
 
 settings = Settings()

@@ -14,8 +14,8 @@ All configuration is via environment variables. Copy `.env.example` to `.env.loc
 | `GITLAB_URL` | `http://192.168.1.145:8080` | Your GitLab instance URL |
 | `GITLAB_BOT_TOKEN` | *(required)* | Personal access token for the bot user |
 | `GITLAB_ROOT_TOKEN` | *(optional)* | Root token for access management (PAT rotation, user creation) |
-| `BOT_USERNAME` | `phixr-bot` | GitLab username of the bot account |
-| `BOT_EMAIL` | `phixr-bot@localhost` | Email for the bot account |
+| `BOT_USERNAME` | `phixr` | GitLab username of the bot account |
+| `BOT_EMAIL` | `phixr@localhost` | Email for the bot account |
 
 ## Server Settings
 
@@ -71,13 +71,38 @@ These use the `PHIXR_SANDBOX_` prefix.
 | `PHIXR_SANDBOX_OPENCODE_IMAGE` | `ghcr.io/phixr/opencode:latest` | OpenCode container image |
 | `PHIXR_SANDBOX_DOCKER_NETWORK` | `phixr-network` | Container network name |
 
-### Model Configuration
+### AI Provider
+
+Only one provider is active at a time.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PHIXR_SANDBOX_MODEL` | `opencode/big-pickle` | Default LLM model |
+| `PHIXR_SANDBOX_PROVIDER` | `ollama` | AI provider: `ollama`, `zen`, or `openai` |
+| `PHIXR_SANDBOX_MODEL` | `qwen2.5-coder` | Model ID for the configured provider |
+| `PHIXR_SANDBOX_PROVIDER_API_KEY` | *(empty)* | API key (not needed for Ollama) |
+| `PHIXR_SANDBOX_PROVIDER_BASE_URL` | `http://localhost:11434` | Provider API base URL (Ollama default) |
 | `PHIXR_SANDBOX_MODEL_TEMPERATURE` | `0.7` | Model temperature |
 | `PHIXR_SANDBOX_MODEL_CONTEXT_WINDOW` | `4096` | Context window size |
+
+**Provider examples:**
+
+```bash
+# Ollama (local, default) — just: ollama pull qwen2.5-coder
+PHIXR_SANDBOX_PROVIDER=ollama
+PHIXR_SANDBOX_MODEL=qwen2.5-coder
+PHIXR_SANDBOX_PROVIDER_BASE_URL=http://localhost:11434
+
+# OpenCode Zen (cloud)
+PHIXR_SANDBOX_PROVIDER=zen
+PHIXR_SANDBOX_MODEL=big-pickle
+PHIXR_SANDBOX_PROVIDER_API_KEY=sk-your-zen-key
+
+# OpenAI-compatible
+PHIXR_SANDBOX_PROVIDER=openai
+PHIXR_SANDBOX_MODEL=gpt-4o
+PHIXR_SANDBOX_PROVIDER_API_KEY=sk-your-openai-key
+PHIXR_SANDBOX_PROVIDER_BASE_URL=https://api.openai.com/v1
+```
 
 ## Data Stores
 
@@ -94,7 +119,7 @@ When running with `podman compose --profile phase-2`, the `docker-compose.yml` o
 | Variable | Container Override | Why |
 |----------|-------------------|-----|
 | `OPENCODE_SERVER_URL` | `http://opencode-server:4096` | Use Docker DNS instead of localhost |
-| `PHIXR_API_URL` | `http://phixr-bot:8000` | Internal container name |
+| `PHIXR_API_URL` | `http://phixr:8000` | Internal container name |
 | `REDIS_URL` | `redis://redis:6379/0` | Redis service name |
 
 All other values (tokens, secrets, GitLab URL) are read from `.env.local` without override.
@@ -116,7 +141,11 @@ LOG_LEVEL=INFO
 PHIXR_SANDBOX_OPENCODE_SERVER_URL=http://localhost:4096
 PHIXR_SANDBOX_OPENCODE_PUBLIC_URL=https://opencode.example.com
 PHIXR_SANDBOX_GIT_PROVIDER_TOKEN=glpat-your-token-here
-PHIXR_SANDBOX_OPENCODE_ZEN_API_KEY=sk-your-api-key
+
+# AI Provider (Ollama example)
+PHIXR_SANDBOX_PROVIDER=ollama
+PHIXR_SANDBOX_MODEL=qwen2.5-coder
+PHIXR_SANDBOX_PROVIDER_BASE_URL=http://localhost:11434
 
 # Redis
 REDIS_URL=redis://localhost:6379/0

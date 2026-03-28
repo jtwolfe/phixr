@@ -35,7 +35,7 @@ RUN mkdir -p /phixr-context
 RUN mkdir -p /phixr-results
 
 # Configure git defaults (for safe operations)
-RUN git config --global user.email "phixr-bot@localhost" && \
+RUN git config --global user.email "phixr@localhost" && \
     git config --global user.name "Phixr Bot" && \
     git config --global init.defaultBranch main
 

@@ -41,7 +41,7 @@ This starts:
 - **opencode-server** -- AI coding engine (port 4096)
 - **redis** -- Session state persistence (port 6379)
 - **postgres** -- Future session history (port 5432)
-- **phixr-bot** -- The bot itself (port 8000)
+- **phixr** -- The bot itself (port 8000)
 
 ### Check Status
 
@@ -58,7 +58,7 @@ All services should show "Up" with opencode-server and redis showing "(healthy)"
 podman compose --profile phase-2 logs -f
 
 # Specific service
-podman logs -f phixr_phixr-bot_1
+podman logs -f phixr_phixr_1
 ```
 
 ### Stop

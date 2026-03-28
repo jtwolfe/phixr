@@ -11,17 +11,17 @@ Phixr uses three commands. Everything else is natural language.
 
 | Command | What It Does |
 |---------|-------------|
-| `@phixr-bot /session` | Start a persistent AI session for the current issue |
-| `@phixr-bot /session --vibe` | Start a session and get a live OpenCode UI link |
-| `@phixr-bot <any message>` | Send a message to the active session |
-| `@phixr-bot /end` | Close the active session |
+| `@phixr /session` | Start a persistent AI session for the current issue |
+| `@phixr /session --vibe` | Start a session and get a live OpenCode UI link |
+| `@phixr <any message>` | Send a message to the active session |
+| `@phixr /end` | Close the active session |
 
 ## Starting a Session
 
 Comment on any GitLab issue:
 
 ```
-@phixr-bot /session
+@phixr /session
 ```
 
 Phixr will:
@@ -38,7 +38,7 @@ You'll get a confirmation comment with the session ID and branch name.
 Add `--vibe` to get a clickable link to the live OpenCode web UI:
 
 ```
-@phixr-bot /session --vibe
+@phixr /session --vibe
 ```
 
 This is useful for:
@@ -50,18 +50,18 @@ Multiple people can open the same link to observe the session.
 
 ## Sending Messages
 
-Once a session is active, any `@phixr-bot` mention forwards your message to the AI:
+Once a session is active, any `@phixr` mention forwards your message to the AI:
 
 ```
-@phixr-bot please add error handling to the login function
-```
-
-```
-@phixr-bot looks good, but use bcrypt instead of sha256
+@phixr please add error handling to the login function
 ```
 
 ```
-@phixr-bot push your changes and create a merge request
+@phixr looks good, but use bcrypt instead of sha256
+```
+
+```
+@phixr push your changes and create a merge request
 ```
 
 The AI treats the full conversation as context -- it remembers everything from the issue description through all your comments.
@@ -79,12 +79,12 @@ The AI decides what to do based on your message. No mode selection needed:
 
 ### No Active Session
 
-If you mention `@phixr-bot` without an active session, Phixr will tell you and suggest starting one with `/session`.
+If you mention `@phixr` without an active session, Phixr will tell you and suggest starting one with `/session`.
 
 ## Ending a Session
 
 ```
-@phixr-bot /end
+@phixr /end
 ```
 
 This stops the OpenCode session, cleans up resources, and frees the issue for a new session.
@@ -113,12 +113,12 @@ When a session completes (AI goes idle), Phixr automatically:
 ## Example Workflow
 
 ```
-Alice:   @phixr-bot /session --vibe
+Alice:   @phixr /session --vibe
 Phixr:   Session started (sess-42-a3f8e1c2)
          Branch: ai-work/issue-42
          Live Session: [Open in Browser](https://opencode.example.com/Lw/session/ses_abc123)
 
-Alice:   @phixr-bot The login form doesn't validate email addresses.
+Alice:   @phixr The login form doesn't validate email addresses.
          Can you add proper email validation and unit tests?
 Phixr:   [AI works on the issue...]
 
@@ -128,10 +128,10 @@ Phixr:   [AI works on the issue...]
          and edge cases.
          Files changed: 3 (+47 / -2)
 
-Alice:   @phixr-bot looks good, push it and create an MR
+Alice:   @phixr looks good, push it and create an MR
 Phixr:   [AI pushes and creates MR]
 
-Alice:   @phixr-bot /end
+Alice:   @phixr /end
 Phixr:   Session ended.
 ```
 

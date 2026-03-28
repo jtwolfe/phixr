@@ -31,10 +31,10 @@ _load_env_file()
 class SandboxConfig(BaseSettings):
     """Configuration for sandbox container execution."""
     
-    # ==================== Phase 2 OpenCode API ====================
+    # ==================== OpenCode API ====================
     opencode_server_url: str = Field(
         default="http://opencode-server:4096",
-        description="OpenCode HTTP API server URL (Phase 2) - use service name for Docker, localhost for dev"
+        description="OpenCode HTTP API server URL - use service name for Docker, localhost for dev"
     )
 
     opencode_public_url: str = Field(
@@ -119,33 +119,63 @@ class SandboxConfig(BaseSettings):
         description="SSH key passphrase (if needed)"
     )
     
-    # ==================== Model Configuration ====================
+    # ==================== Model / Provider Configuration ====================
+    # Only one provider is active at a time. Set the provider and its
+    # corresponding API key / base URL.
+    #
+    # Supported providers:
+    #   "zen"    — OpenCode Zen (cloud, needs API key)
+    #   "ollama" — Local Ollama instance (needs base URL, no API key)
+    #   "openai" — OpenAI-compatible API (needs API key + optional base URL)
+    #
+    # The provider and model are passed to OpenCode per-prompt so the
+    # OpenCode server itself doesn't need provider configuration.
+
+    provider: str = Field(
+        default="ollama",
+        description="LLM provider: 'zen', 'ollama', or 'openai'"
+    )
+
     model: str = Field(
-        default="opencode/big-pickle",
-        description="Default LLM model to use"
+        default="qwen2.5-coder",
+        description="Model ID for the configured provider"
     )
-    
-    # OpenCode Zen API key - loaded via environment variable
-    # Note: env_prefix="PHIXR_SANDBOX_" adds prefix, so field name without prefix
-    opencode_zen_api_key: str = Field(
+
+    provider_api_key: str = Field(
         default="",
-        description="OpenCode Zen API key for big-pickle model"
+        description="API key for the provider (not needed for Ollama)"
     )
-    
-    @property
-    def zen_api_key(self) -> str:
-        """Get the Zen API key."""
-        return self.opencode_zen_api_key
-    
+
+    provider_base_url: str = Field(
+        default="http://localhost:11434",
+        description="Base URL for the provider API (Ollama default: http://localhost:11434)"
+    )
+
     model_temperature: float = Field(
         default=0.7,
         description="Temperature for model responses"
     )
-    
+
     model_context_window: int = Field(
         default=4096,
         description="LLM context window size"
     )
+
+    @property
+    def opencode_provider_id(self) -> str:
+        """Map our provider name to OpenCode's providerID."""
+        return {
+            "zen": "opencode",
+            "ollama": "ollama",
+            "openai": "openai",
+        }.get(self.provider, self.provider)
+
+    @property
+    def opencode_model_id(self) -> str:
+        """Map our model name to OpenCode's modelID."""
+        if self.provider == "zen":
+            return f"opencode/{self.model}"
+        return self.model
     
     # ==================== Execution Policies ====================
     allow_external_network: bool = Field(

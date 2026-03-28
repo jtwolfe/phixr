@@ -65,7 +65,7 @@ class TestSessionStart:
         ctx.repo_url = "http://test.git"
         handler.context_extractor.extract_issue_context.return_value = ctx
 
-        webhook = _make_webhook("@phixr-bot /session")
+        webhook = _make_webhook("@phixr /session")
         result = await handler.handle_issue_comment(webhook)
 
         assert result is True
@@ -82,7 +82,7 @@ class TestSessionStart:
         ctx.repo_url = "http://test.git"
         handler.context_extractor.extract_issue_context.return_value = ctx
 
-        webhook = _make_webhook("@phixr-bot /session --vibe")
+        webhook = _make_webhook("@phixr /session --vibe")
         result = await handler.handle_issue_comment(webhook)
 
         assert result is True
@@ -97,7 +97,7 @@ class TestSessionStart:
         integration.get_active_session_for_issue.return_value = existing
 
         handler, gitlab = _make_handler(integration)
-        webhook = _make_webhook("@phixr-bot /session")
+        webhook = _make_webhook("@phixr /session")
         result = await handler.handle_issue_comment(webhook)
 
         assert result is True
@@ -109,7 +109,7 @@ class TestSessionStart:
     @pytest.mark.asyncio
     async def test_no_integration_reports_error(self):
         handler, gitlab = _make_handler()
-        webhook = _make_webhook("@phixr-bot /session")
+        webhook = _make_webhook("@phixr /session")
         result = await handler.handle_issue_comment(webhook)
 
         assert result is True
@@ -128,7 +128,7 @@ class TestMessageForwarding:
         integration.get_active_session_for_issue.return_value = active
 
         handler, gitlab = _make_handler(integration)
-        webhook = _make_webhook("@phixr-bot please add tests for the auth module")
+        webhook = _make_webhook("@phixr please add tests for the auth module")
         result = await handler.handle_issue_comment(webhook)
 
         assert result is True
@@ -141,7 +141,7 @@ class TestMessageForwarding:
         integration = _make_integration()
         handler, gitlab = _make_handler(integration)
 
-        webhook = _make_webhook("@phixr-bot please fix the login")
+        webhook = _make_webhook("@phixr please fix the login")
         result = await handler.handle_issue_comment(webhook)
 
         assert result is True
@@ -154,7 +154,7 @@ class TestMessageForwarding:
         integration = _make_integration()
         handler, gitlab = _make_handler(integration)
 
-        webhook = _make_webhook("@phixr-bot")
+        webhook = _make_webhook("@phixr")
         result = await handler.handle_issue_comment(webhook)
 
         assert result is True
@@ -172,7 +172,7 @@ class TestSessionEnd:
         integration.get_active_session_for_issue.return_value = active
 
         handler, gitlab = _make_handler(integration)
-        webhook = _make_webhook("@phixr-bot /end")
+        webhook = _make_webhook("@phixr /end")
         result = await handler.handle_issue_comment(webhook)
 
         assert result is True
@@ -186,7 +186,7 @@ class TestSessionEnd:
         integration = _make_integration()
         handler, gitlab = _make_handler(integration)
 
-        webhook = _make_webhook("@phixr-bot /end")
+        webhook = _make_webhook("@phixr /end")
         result = await handler.handle_issue_comment(webhook)
 
         assert result is True
@@ -199,10 +199,10 @@ class TestIgnoresSelf:
     @pytest.mark.asyncio
     async def test_ignores_bot_comments(self):
         handler, gitlab = _make_handler()
-        webhook = _make_webhook("@phixr-bot /session", author="phixr-bot")
+        webhook = _make_webhook("@phixr /session", author="phixr")
 
         with patch("phixr.handlers.comment_handler.settings") as mock_settings:
-            mock_settings.bot_username = "phixr-bot"
+            mock_settings.bot_username = "phixr"
             result = await handler.handle_issue_comment(webhook)
 
         assert result is False

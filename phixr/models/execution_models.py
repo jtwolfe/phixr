@@ -52,7 +52,7 @@ class SessionMessage(BaseModel):
 class VibeRoom(BaseModel):
     """Represents a shared collaborative session for multi-user coding.
     
-    In future phases, vibe rooms will enable:
+    Future enhancements:
     - Real-time collaboration between multiple users
     - Shared context and session state
     - Message attribution and threading
@@ -73,7 +73,7 @@ class VibeRoom(BaseModel):
     )
     sharing_token: Optional[str] = Field(
         None,
-        description="Token for sharing room access (Phase 3)"
+        description="Token for sharing room access"
     )
     
     # Message history with attribution
@@ -117,14 +117,14 @@ class Session(BaseModel):
     exit_code: Optional[int] = None
     errors: List[str] = Field(default_factory=list)
     
-    # Multi-user foundation (Phase 3+)
+    # Multi-user support
     vibe_room_id: Optional[str] = Field(
         None,
         description="Associated vibe room ID for collaborative sessions"
     )
     single_user: bool = Field(
         default=True,
-        description="Whether this is a single-user session (Phase 2) or shared (Phase 3+)"
+        description="Whether this is a single-user or shared session"
     )
 
     # Monitoring

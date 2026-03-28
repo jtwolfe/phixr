@@ -30,18 +30,18 @@ class CommandParser:
 
     # Pattern: @phixr /session [--vibe]
     _SESSION_RE = re.compile(
-        r"@phixr[-_ ]?bot\s+/session(?:\s+(--vibe))?",
+        r"@phixr\s+/session(?:\s+(--vibe))?",
         re.IGNORECASE,
     )
     # Pattern: @phixr /end
     _END_RE = re.compile(
-        r"@phixr[-_ ]?bot\s+/end",
+        r"@phixr\s+/end",
         re.IGNORECASE,
     )
     # Pattern: @phixr <message> (must not start with a slash command we handle)
-    # Also matches bare @phixr-bot with no trailing text
+    # Also matches bare @phixr with no trailing text
     _MENTION_RE = re.compile(
-        r"@phixr[-_ ]?bot(?:\s+(.*))?",
+        r"@phixr(?:\s+(.*))?",
         re.IGNORECASE | re.DOTALL,
     )
 

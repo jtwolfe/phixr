@@ -41,7 +41,7 @@ pip install -r requirements.txt
 python scripts/setup_bot_user.py --gitlab-url http://your-gitlab-instance:8080
 ```
 
-The script creates the `phixr-bot` user and outputs a personal access token. Add it to your `.env.local` as `GITLAB_BOT_TOKEN`.
+The script creates the `phixr` user and outputs a personal access token. Add it to your `.env.local` as `GITLAB_BOT_TOKEN`.
 
 ## 3. Run Phixr
 
@@ -75,13 +75,13 @@ In your GitLab project:
 Open an issue in your GitLab project and comment:
 
 ```
-@phixr-bot /session
+@phixr /session
 ```
 
 Phixr should reply confirming the session started. Then try:
 
 ```
-@phixr-bot what files are in this repository?
+@phixr what files are in this repository?
 ```
 
 ## Verify Health

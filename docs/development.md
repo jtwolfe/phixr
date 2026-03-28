@@ -68,7 +68,7 @@ phixr/
     settings.py                    # Pydantic settings (from env vars)
     sandbox_config.py              # OpenCode/sandbox configuration
   handlers/
-    comment_handler.py             # Routes @phixr-bot interactions
+    comment_handler.py             # Routes @phixr interactions
   commands/
     parser.py                      # Parses /session, /end, messages
   integration/

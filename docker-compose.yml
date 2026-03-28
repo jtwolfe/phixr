@@ -4,6 +4,9 @@ services:
     env_file:
       - path: .env.local
         required: true
+    environment:
+      # OpenCode reads its own env var names — map from our config
+      OPENCODE_ZEN_API_KEY: ${PHIXR_SANDBOX_PROVIDER_API_KEY:-}
     command: >
       bash -c "
         npm install -g opencode-ai@latest &&
@@ -23,11 +26,11 @@ services:
       - phase-2
     restart: unless-stopped
 
-  phixr-bot:
+  phixr:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: phixr-bot:latest
+    image: phixr:latest
     networks:
       - phixr-network
     ports:
@@ -40,8 +43,8 @@ services:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8000
       OPENCODE_SERVER_URL: http://opencode-server:4096
-      PHIXR_API_URL: http://phixr-bot:8000
-      WEBHOOK_URL: http://phixr-bot:8000/webhooks/gitlab
+      PHIXR_API_URL: http://phixr:8000
+      WEBHOOK_URL: http://phixr:8000/webhooks/gitlab
       REDIS_URL: redis://redis:6379/0
       PHIXR_SANDBOX_OPENCODE_SERVER_URL: http://opencode-server:4096
       PHIXR_SANDBOX_REDIS_URL: redis://redis:6379/1

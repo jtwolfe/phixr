@@ -12,8 +12,8 @@ import time
 @click.option('--gitlab-url', default='http://localhost:8080', help='GitLab instance URL')
 @click.option('--root-token', prompt='Paste your root personal access token here', 
               hide_input=True, help='Root PAT token from GitLab')
-@click.option('--bot-username', default='phixr-bot', help='Bot username')
-@click.option('--bot-email', default='phixr-bot@localhost', help='Bot email')
+@click.option('--bot-username', default='phixr', help='Bot username')
+@click.option('--bot-email', default='phixr@localhost', help='Bot email')
 def setup_bot(gitlab_url: str, root_token: str, bot_username: str, bot_email: str):
     """
     Set up Phixr bot user using a root PAT token.
@@ -107,7 +107,7 @@ def setup_bot(gitlab_url: str, root_token: str, bot_username: str, bot_email: st
         time.sleep(1)
         
         bot_token_data = {
-            'name': 'phixr-bot-token',
+            'name': 'phixr-token',
             'scopes': ['api', 'read_api', 'write_repository'],
             'expires_at': None
         }

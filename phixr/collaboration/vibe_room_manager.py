@@ -1,6 +1,5 @@
 """Manager for multi-user collaborative vibe rooms.
 
-This module provides the foundation for Phase 3+ multi-user collaboration features.
 Vibe rooms allow multiple users to share and collaborate on OpenCode sessions with
 proper access control and message attribution.
 """
@@ -19,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 class VibeRoomManager:
     """Manages collaborative vibe rooms for multi-user sessions.
-    
-    In Phase 2 (current), this is a foundation with minimal functionality.
-    Phase 3+ will add:
+
+    Currently single-user with foundational multi-user structures.
+    Future enhancements:
     - Real-time WebSocket-based collaboration
     - Persistent vibe room storage (Redis/PostgreSQL)
     - Permission-based access control
@@ -36,9 +35,8 @@ class VibeRoomManager:
     def create_room(self, session: Session, owner_id: str, 
                    room_name: Optional[str] = None) -> VibeRoom:
         """Create a new vibe room for a session.
-        
-        In Phase 2, only the owner can use the room (single-user).
-        Phase 3+ will enable adding other participants.
+
+        Currently single-user (only the owner can participate).
         
         Args:
             session: OpenCode session to associate with room
@@ -99,9 +97,6 @@ class VibeRoomManager:
     def add_participant(self, room_id: str, user_id: str, username: str,
                        role: str = "viewer") -> bool:
         """Add a participant to a vibe room.
-        
-        In Phase 2, this is a no-op (only owner can participate).
-        Phase 3+ will implement full multi-user support.
         
         Args:
             room_id: Room ID
@@ -198,9 +193,6 @@ class VibeRoomManager:
     def generate_sharing_token(self, room_id: str) -> Optional[str]:
         """Generate a sharing token for a vibe room.
         
-        In Phase 3+, this token can be used to grant access to other users.
-        Phase 2 does not use this feature.
-        
         Args:
             room_id: Room ID
             
@@ -219,8 +211,6 @@ class VibeRoomManager:
     
     def get_room_by_token(self, token: str) -> Optional[VibeRoom]:
         """Get vibe room by sharing token.
-        
-        Phase 3+ feature: Not implemented in Phase 2.
         
         Args:
             token: Sharing token
@@ -305,7 +295,7 @@ class VibeRoomManager:
         }
 
 
-# Global vibe room manager instance (will be moved to proper DI in Phase 3)
+# Global vibe room manager instance
 _vibe_room_manager: Optional[VibeRoomManager] = None
 
 

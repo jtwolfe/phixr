@@ -35,7 +35,7 @@ RUN printf '{\n' > /home/opencode/.config/opencode/opencode.json && \
     printf '  }\n' >> /home/opencode/.config/opencode/opencode.json && \
     printf '}\n' >> /home/opencode/.config/opencode/opencode.json
 
-RUN git config --global user.email "phixr-bot@localhost" && \
+RUN git config --global user.email "phixr@localhost" && \
     git config --global user.name "Phixr Bot" && \
     git config --global init.defaultBranch main && \
     chown -R opencode:opencode /home/opencode /workspace /phixr-context /phixr-results

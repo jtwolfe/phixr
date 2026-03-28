@@ -4,24 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Does
 
-Phixr seamlessly bridges GitLab's issue workflow with OpenCode's AI coding sessions. It runs as a FastAPI bot that listens for GitLab webhooks and responds to `@phixr-bot` mentions in issue comments.
+Phixr seamlessly bridges GitLab's issue workflow with OpenCode's AI coding sessions. It runs as a FastAPI bot that listens for GitLab webhooks and responds to `@phixr` mentions in issue comments.
 
 **Core concept:** GitLab issues are OpenCode sessions. Comments are messages. Three commands total.
 
 Two operating modes:
-- **Independent Mode**: Comment-driven — AI works autonomously, posts results back to the issue
-- **Vibe Mode**: `@phixr-bot /session --vibe` — returns a live OpenCode UI link for interactive use
+- **Independent Mode**: Comment-driven -- AI works autonomously, posts results back to the issue
+- **Vibe Mode**: `@phixr /session --vibe` -- returns a live OpenCode UI link for interactive use
 
 ## User Interaction
 
 | Input | What Happens |
 |-------|-------------|
-| `@phixr-bot /session` | Start a persistent session (one per issue) |
-| `@phixr-bot /session --vibe` | Start session + get live OpenCode UI link |
-| `@phixr-bot <any message>` | Forward to active session |
-| `@phixr-bot /end` | Close session |
+| `@phixr /session` | Start a persistent session (one per issue) |
+| `@phixr /session --vibe` | Start session + get live OpenCode UI link |
+| `@phixr <any message>` | Forward to active session |
+| `@phixr /end` | Close session |
 
-No mode selection — the AI reads the issue and figures out what to do.
+No mode selection -- the AI reads the issue and figures out what to do.
 
 ## Commands
 
@@ -39,48 +39,45 @@ pytest
 pytest tests/unit/ -v
 
 # Run a single test file
-pytest tests/unit/test_sandbox_config.py -v
+pytest tests/unit/test_command_parser.py -v
 
 # Run a single test class
-pytest tests/unit/test_sandbox_config.py::TestSandboxConfig -v
+pytest tests/unit/test_command_parser.py::TestCommandParser -v
 
 # Run with coverage
 pytest --cov=phixr --cov-report=html
 
 # Run with Podman Compose
 podman compose up
-
-# Run with Phase 2 services (OpenCode server, etc.)
-podman compose --profile phase-2 up
 ```
 
 ## Architecture
 
 ### Entry Point & Request Flow
 
-`phixr/main.py` — FastAPI app. On startup, initializes GitLab client, registers webhook routes, and sets up OpenCode integration.
+`phixr/main.py` -- FastAPI app. On startup, initializes GitLab client, registers webhook routes, and sets up OpenCode integration.
 
 ```
-GitLab Issue Comment (@phixr-bot ...)
-  → POST /webhooks/gitlab
-  → WebhookValidator (token check)
-  → CommentHandler.handle_issue_comment()
-  → CommandParser.parse()
-    ├── /session [--vibe]  → create OpenCode session, start monitoring
-    ├── /end               → stop session, clean up
-    └── <message>          → forward to active session via send_followup()
-  → monitor_session() (background task)
-    → SSE event stream from OpenCode
-    → Auto-approves permissions and questions
-    → Detects idle → posts results to GitLab
+GitLab Issue Comment (@phixr ...)
+  -> POST /webhooks/gitlab
+  -> WebhookValidator (token check)
+  -> CommentHandler.handle_issue_comment()
+  -> CommandParser.parse()
+    |-- /session [--vibe]  -> create OpenCode session, start monitoring
+    |-- /end               -> stop session, clean up
+    +-- <message>          -> forward to active session via send_followup()
+  -> monitor_session() (background task)
+    -> SSE event stream from OpenCode
+    -> Auto-approves permissions and questions
+    -> Detects idle -> posts results to GitLab
 ```
 
 ### Key Modules
 
 | Module | Responsibility |
 |--------|---------------|
-| `phixr/handlers/comment_handler.py` | Routes `@phixr-bot` interactions: session start, message forward, session end |
-| `phixr/commands/parser.py` | Parses `/session`, `/end`, and bare `@phixr-bot` messages |
+| `phixr/handlers/comment_handler.py` | Routes `@phixr` interactions: session start, message forward, session end |
+| `phixr/commands/parser.py` | Parses `/session`, `/end`, and bare `@phixr` messages |
 | `phixr/integration/opencode_integration_service.py` | Orchestrates sessions, forwards messages, monitors completion, reports to GitLab |
 | `phixr/bridge/opencode_client.py` | Async HTTP + SSE client for OpenCode's REST API |
 | `phixr/git/branch_manager.py` | Creates `ai-work/issue-{id}` branches, checks for existing MRs |
@@ -123,11 +120,11 @@ Copy `.env.example` to `.env.local` before running locally.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `GITLAB_URL` | `http://192.168.1.145:8080` | GitLab instance |
-| `GITLAB_BOT_TOKEN` | — | Bot user PAT |
-| `WEBHOOK_SECRET` | — | Webhook validation |
+| `GITLAB_BOT_TOKEN` | -- | Bot user PAT |
+| `WEBHOOK_SECRET` | -- | Webhook validation |
 | `PHIXR_SANDBOX_OPENCODE_SERVER_URL` | `http://localhost:4096` | OpenCode server |
-| `PHIXR_SANDBOX_GIT_PROVIDER_TOKEN` | — | Git token for repo cloning |
-| `PHIXR_API_URL` | — | Public URL for vibe room links |
+| `PHIXR_SANDBOX_GIT_PROVIDER_TOKEN` | -- | Git token for repo cloning |
+| `PHIXR_API_URL` | -- | Public URL for vibe room links |
 
 ## Test Configuration
 
@@ -136,6 +133,6 @@ Copy `.env.example` to `.env.local` before running locally.
 ## Docs
 
 Primary references for design intent and requirements:
-- `docs/PROJECT_GOALS.md` — current vision and feature requirements
-- `docs/ARCHITECTURE.md` — technical architecture details
-- `docs/GETTING_STARTED.md` — setup and installation guide
+- `docs/PROJECT_GOALS.md` -- current vision and feature requirements
+- `docs/ARCHITECTURE.md` -- technical architecture details
+- `docs/GETTING_STARTED.md` -- setup and installation guide

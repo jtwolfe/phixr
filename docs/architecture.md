@@ -12,7 +12,7 @@ Phixr is a FastAPI application that bridges GitLab's issue workflow with OpenCod
 ## Request Flow
 
 ```
-GitLab Issue Comment (@phixr-bot ...)
+GitLab Issue Comment (@phixr ...)
   --> POST /webhooks/gitlab
   --> WebhookValidator (token check)
   --> CommentHandler.handle_issue_comment()

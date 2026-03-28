@@ -144,6 +144,8 @@ class OpenCodeIntegrationService:
             session_id=oc_session_id,
             message=prompt,
             system=system_instructions,
+            provider_id=self.config.opencode_provider_id,
+            model_id=self.config.opencode_model_id,
         )
 
         # Create vibe room
@@ -175,7 +177,12 @@ class OpenCodeIntegrationService:
             return False
 
         prompt = f"**{author}** says:\n\n{message}"
-        await self.client.send_prompt(session_id=oc_session_id, message=prompt)
+        await self.client.send_prompt(
+            session_id=oc_session_id,
+            message=prompt,
+            provider_id=self.config.opencode_provider_id,
+            model_id=self.config.opencode_model_id,
+        )
 
         logger.info(f"Forwarded message to session {session_id} from {author}")
         return True
@@ -225,7 +232,7 @@ class OpenCodeIntegrationService:
                 gitlab_client, project_id, issue_id,
                 f"⏰ **Session Timed Out**\n\n"
                 f"Session `{session_id}` exceeded the {session.timeout_minutes} minute limit.\n"
-                f"The session has been aborted. Start a new one with `@phixr-bot /session`."
+                f"The session has been aborted. Start a new one with `@phixr /session`."
             )
 
         except Exception as e:

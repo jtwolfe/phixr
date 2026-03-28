@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN mkdir -p /phixr-context /phixr-results /workspace
 
 # Configure git
-RUN git config --global user.email "phixr-bot@localhost" && \
+RUN git config --global user.email "phixr@localhost" && \
     git config --global user.name "Phixr Bot" && \
     git config --global init.defaultBranch main
 

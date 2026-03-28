@@ -1,17 +1,45 @@
-.env.local
+# Environment
 .env
+.env.local
 .env.*.local
+.env.production
+
+# Python
 *.pyc
 __pycache__/
 .venv/
 venv/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Phixr runtime
+.phixr_token
+.phixr_bot_token
+phixr.log
+.webhook_id
+
+# Node
 node_modules/
 dist/
 build/
+
+# Editors / OS
 .DS_Store
 .idea/
 .vscode/
 *.swp
 *.swo
-.env.production
+
+# Docs build
+docs/_site/
+docs/.jekyll-cache/
+docs/Gemfile.lock
+
+# Vendored references (kept locally, not in repo)
+opencodecode/
+
+# Secrets
 secrets/

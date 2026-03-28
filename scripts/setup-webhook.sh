@@ -134,8 +134,8 @@ echo "  - Issue events (create, update, close)"
 echo "  - Note events (comments on issues)"
 echo ""
 echo "The bot will respond when:"
-echo "  - User mentions @phixr-bot in a comment, OR"
-echo "  - User is assigned to an issue where phixr-bot is also assigned"
+echo "  - User mentions @phixr in a comment, OR"
+echo "  - User is assigned to an issue where phixr is also assigned"
 echo ""
 
 # Save webhook ID for cleanup

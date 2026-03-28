@@ -18,7 +18,7 @@ def _make_context(**overrides):
         description="Login crashes when password is empty.",
         url="http://gitlab.local/project/-/issues/42",
         author="alice",
-        assignees=["phixr-bot"],
+        assignees=["phixr"],
         labels=["bug"],
         repo_url="http://gitlab.local/project.git",
         repo_name="my/project",

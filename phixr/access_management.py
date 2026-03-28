@@ -30,7 +30,7 @@ class AccessManagementService:
     def __init__(self,
                  gitlab_url: str,
                  root_token: str,
-                 bot_username: str = "phixr-bot",
+                 bot_username: str = "phixr",
                  cert_dir: Path = Path("/usr/local/share/ca-certificates"),
                  check_interval_hours: int = 24):
         """Initialize access management service.
@@ -296,7 +296,7 @@ class AccessManagementService:
         """Create a new PAT for the bot user."""
         try:
             # Generate PAT name with timestamp
-            pat_name = f"phixr-bot-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+            pat_name = f"phixr-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
 
             # Set expiration to 90 days from now
             expires_at = (datetime.utcnow() + timedelta(days=90)).date().isoformat()
@@ -338,7 +338,7 @@ class AccessManagementService:
             for pat in pats:
                 if (pat.get('active', False) and
                     'phixr' in pat.get('name', '').lower() and
-                    pat.get('name') != f"phixr-bot-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"):
+                    pat.get('name') != f"phixr-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"):
                     await self.root_client.revoke_user_pat(user_id, pat['id'])
                     logger.info(f"Revoked old PAT: {pat['name']}")
 
@@ -349,7 +349,7 @@ class AccessManagementService:
         """Save the bot token to persistent storage."""
         try:
             # For now, save to a file that can be loaded by the main application
-            token_file = Path("/app/.phixr_bot_token")
+            token_file = Path("/app/.phixr_token")
             await asyncio.get_event_loop().run_in_executor(None, self._write_token_file, token_file)
             logger.info("Bot token saved to persistent storage")
 
@@ -368,7 +368,7 @@ class AccessManagementService:
     async def load_saved_bot_token(self) -> Optional[str]:
         """Load saved bot token from persistent storage."""
         try:
-            token_file = Path("/app/.phixr_bot_token")
+            token_file = Path("/app/.phixr_token")
             if token_file.exists():
                 await asyncio.get_event_loop().run_in_executor(None, self._read_token_file, token_file)
                 return self.bot_token

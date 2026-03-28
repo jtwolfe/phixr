@@ -10,25 +10,25 @@ title: Home
 Phixr bridges GitLab's issue workflow with [OpenCode](https://opencode.ai)'s AI coding sessions. GitLab issues become persistent AI sessions. Comments become messages. Three commands total.
 
 ```
-Alice:   @phixr-bot /session
+Alice:   @phixr /session
 Phixr:   Session started. Branch: ai-work/issue-42
 
-Alice:   @phixr-bot add user authentication with JWT tokens
+Alice:   @phixr add user authentication with JWT tokens
 Phixr:   [implements changes, posts summary with diff stats]
 
-Alice:   @phixr-bot push your changes and create an MR
+Alice:   @phixr push your changes and create an MR
 Phixr:   [pushes to branch, creates merge request, posts link]
 
-Alice:   @phixr-bot /end
+Alice:   @phixr /end
 Phixr:   Session ended.
 ```
 
 ## How It Works
 
-1. **Start a session** on any GitLab issue with `@phixr-bot /session`
-2. **Talk to the AI** by mentioning `@phixr-bot` in issue comments
+1. **Start a session** on any GitLab issue with `@phixr /session`
+2. **Talk to the AI** by mentioning `@phixr` in issue comments
 3. **Watch it work** with `--vibe` flag for a live OpenCode UI link
-4. **End the session** with `@phixr-bot /end` when you're done
+4. **End the session** with `@phixr /end` when you're done
 
 The AI reads the issue, clones the repo, creates a working branch, and handles everything from planning to implementation. All through natural conversation in GitLab comments.
 
