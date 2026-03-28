@@ -57,7 +57,7 @@ class SandboxConfig(BaseSettings):
     )
     
     opencode_image: str = Field(
-        default="ghcr.io/phixr/opencode:latest",
+        default="ghcr.io/jtwolfe/phixr-opencode:latest",
         description="OpenCode Docker image URI"
     )
     

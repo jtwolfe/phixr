@@ -1,17 +1,15 @@
 services:
   opencode-server:
-    image: node:20-slim
+    image: ghcr.io/jtwolfe/phixr-opencode:latest
+    build:
+      context: .
+      dockerfile: docker/opencode-prod.Dockerfile
     env_file:
       - path: .env.local
         required: true
     environment:
       # OpenCode reads its own env var names — map from our config
       OPENCODE_ZEN_API_KEY: ${PHIXR_SANDBOX_PROVIDER_API_KEY:-}
-    command: >
-      bash -c "
-        npm install -g opencode-ai@latest &&
-        opencode serve --hostname 0.0.0.0 --port 4096
-      "
     ports:
       - "4096:4096"
     networks:
@@ -27,10 +25,10 @@ services:
     restart: unless-stopped
 
   phixr:
+    image: ghcr.io/jtwolfe/phixr:latest
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: phixr:latest
     networks:
       - phixr-network
     ports:

@@ -67,7 +67,7 @@ These use the `PHIXR_SANDBOX_` prefix.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PHIXR_SANDBOX_DOCKER_HOST` | `unix:///run/user/1000/podman/podman.sock` | Container runtime socket |
-| `PHIXR_SANDBOX_OPENCODE_IMAGE` | `ghcr.io/phixr/opencode:latest` | OpenCode container image |
+| `PHIXR_SANDBOX_OPENCODE_IMAGE` | `ghcr.io/jtwolfe/phixr-opencode:latest` | OpenCode container image |
 | `PHIXR_SANDBOX_DOCKER_NETWORK` | `phixr-network` | Container network name |
 
 ### AI Provider

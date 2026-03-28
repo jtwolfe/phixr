@@ -32,3 +32,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Run the application with certificate setup
 CMD ["/bin/bash", "-c", "/usr/local/bin/setup-gitlab-cert.sh && python -m phixr.main"]
+
+LABEL org.opencontainers.image.title="Phixr" \
+      org.opencontainers.image.description="GitLab-AI Integration Platform" \
+      org.opencontainers.image.source="https://github.com/jtwolfe/phixr"
